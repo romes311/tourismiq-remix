@@ -3,6 +3,7 @@ import { json } from "@remix-run/node";
 import { Form, Link, useLoaderData } from "@remix-run/react";
 import { db } from "~/utils/db.server";
 import { authenticator } from "~/utils/auth.server";
+import { CreatePostForm } from "~/components/CreatePostForm";
 
 interface Connection {
   id: string;
@@ -64,6 +65,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     posts: posts.map((post) => ({
       id: post.id,
       content: post.content,
+      category: post.category,
       timestamp: post.createdAt.toISOString(),
       author: {
         name: post.author.name,
@@ -171,6 +173,8 @@ export default function Index() {
 
         {/* Main Content */}
         <main className="lg:col-span-6">
+          {user && <CreatePostForm />}
+
           <div className="space-y-6">
             {posts.map((post) => (
               <article
@@ -183,14 +187,23 @@ export default function Index() {
                     alt={post.author.name}
                     className="h-12 w-12 rounded-full"
                   />
-                  <div>
+                  <div className="flex-1">
                     <h2 className="font-semibold text-gray-900 dark:text-gray-100">
                       {post.author.name}
                     </h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      {post.author.organization} •{" "}
-                      {new Date(post.timestamp).toLocaleString()}
-                    </p>
+                    <div className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
+                      <span>{post.author.organization}</span>
+                      <span>•</span>
+                      <span>{new Date(post.timestamp).toLocaleString()}</span>
+                    </div>
+                  </div>
+                  <div className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                    {post.category
+                      .split("_")
+                      .map(
+                        (word) => word.charAt(0) + word.slice(1).toLowerCase()
+                      )
+                      .join(" ")}
                   </div>
                 </div>
 

@@ -29,13 +29,31 @@ model User {
   following     Follow[]  @relation("follower")
 }
 
+enum PostCategory {
+  THOUGHT_LEADERSHIP
+  NEWS
+  EVENTS
+  BLOG_POST
+  BOOKS
+  COURSES
+  PODCASTS
+  PRESENTATIONS
+  PRESS_RELEASES
+  TEMPLATES
+  VIDEOS
+  WEBINARS
+  CASE_STUDIES
+  WHITEPAPERS
+}
+
 model Post {
-  id        String    @id @default(cuid())
+  id        String      @id @default(cuid())
   content   String
-  author    User      @relation(fields: [authorId], references: [id])
+  category  PostCategory
+  author    User        @relation(fields: [authorId], references: [id])
   authorId  String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
   likes     Like[]
   comments  Comment[]
   hashtags  String[]
