@@ -1,10 +1,11 @@
 import { useState } from "react";
 import type { User } from "~/utils/auth.server";
+import { PostCategory } from "~/types/post";
 
 export interface PostProps {
   id: string;
   content: string;
-  category: string;
+  category: PostCategory;
   imageUrl: string | null;
   timestamp: string | null;
   author: {
@@ -15,7 +16,7 @@ export interface PostProps {
   upvotes: number;
   comments: number;
   shares: number;
-  currentUser: User;
+  currentUser: User | null;
   isLiked?: boolean;
 }
 

@@ -1,23 +1,23 @@
 import { useNavigation, type FetcherWithComponents } from "@remix-run/react";
-import type { PostCategory } from "@prisma/client";
-import { useRef, useState, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { User } from "~/utils/auth.server";
+import { PostCategory } from "~/types/post";
 
 const categories: { label: string; value: PostCategory }[] = [
-  { label: "Thought Leadership", value: "THOUGHT_LEADERSHIP" },
-  { label: "News", value: "NEWS" },
-  { label: "Events", value: "EVENTS" },
-  { label: "Blog Post", value: "BLOG_POST" },
-  { label: "Books", value: "BOOKS" },
-  { label: "Courses", value: "COURSES" },
-  { label: "Podcasts", value: "PODCASTS" },
-  { label: "Presentations", value: "PRESENTATIONS" },
-  { label: "Press Releases", value: "PRESS_RELEASES" },
-  { label: "Templates", value: "TEMPLATES" },
-  { label: "Videos", value: "VIDEOS" },
-  { label: "Webinars", value: "WEBINARS" },
-  { label: "Case Studies", value: "CASE_STUDIES" },
-  { label: "Whitepapers", value: "WHITEPAPERS" },
+  { label: "Thought Leadership", value: PostCategory.THOUGHT_LEADERSHIP },
+  { label: "News", value: PostCategory.NEWS },
+  { label: "Events", value: PostCategory.EVENTS },
+  { label: "Blog Post", value: PostCategory.BLOG_POST },
+  { label: "Books", value: PostCategory.BOOKS },
+  { label: "Courses", value: PostCategory.COURSES },
+  { label: "Podcasts", value: PostCategory.PODCASTS },
+  { label: "Presentations", value: PostCategory.PRESENTATIONS },
+  { label: "Press Releases", value: PostCategory.PRESS_RELEASES },
+  { label: "Templates", value: PostCategory.TEMPLATES },
+  { label: "Videos", value: PostCategory.VIDEOS },
+  { label: "Webinars", value: PostCategory.WEBINARS },
+  { label: "Case Studies", value: PostCategory.CASE_STUDIES },
+  { label: "Whitepapers", value: PostCategory.WHITEPAPERS },
 ];
 
 interface PostTriggerProps {

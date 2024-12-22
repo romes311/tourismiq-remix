@@ -8,15 +8,17 @@ import {
   useLoaderData,
   useFetcher,
   useSearchParams,
+  useNavigate,
 } from "@remix-run/react";
 import { prisma } from "~/utils/db.server";
 import { authenticator } from "~/utils/auth.server";
+import type { User } from "~/utils/auth.server";
 import { CreatePostForm } from "~/components/CreatePostForm";
 import { Post } from "~/components/Post";
 import { uploadImage } from "~/utils/upload.server";
 import { useState, useEffect } from "react";
 import { SidebarNav } from "~/components/SidebarNav";
-import type { PostCategory } from "@prisma/client";
+import { PostCategory } from "~/types/post";
 
 interface PostWithUser {
   id: string;
@@ -35,12 +37,43 @@ interface PostWithUser {
   shares: number;
 }
 
+interface Connection {
+  id: string;
+  name: string;
+  organization: string | null;
+  avatar: string | null;
+}
+
+interface LoaderData {
+  user: User | null;
+  posts: PostWithUser[];
+  connections: Connection[];
+}
+
 export async function loader({ request }: LoaderFunctionArgs) {
-  const user = await authenticator.isAuthenticated(request, {
-    failureRedirect: "/login",
-  });
+  const user = await authenticator.isAuthenticated(request);
+  const url = new URL(request.url);
+  const categoryParam = url.searchParams.get("category");
+
+  // Parse category parameter
+  let categories: PostCategory[] | null = null;
+  if (categoryParam) {
+    categories = categoryParam.includes(",")
+      ? (categoryParam.split(",") as PostCategory[])
+      : [categoryParam as PostCategory];
+  }
+
+  // Build the where clause for the query
+  const where = categories
+    ? {
+        category: {
+          in: categories,
+        },
+      }
+    : {};
 
   const posts = await prisma.post.findMany({
+    where,
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
@@ -67,7 +100,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const connections = await prisma.user.findMany({
     where: {
-      NOT: { id: user.id },
+      NOT: { id: user?.id },
     },
     take: 5,
     select: {
@@ -78,12 +111,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
     },
   });
 
-  return json({
+  return json<LoaderData>({
     user,
     posts: posts.map((post) => ({
       id: post.id,
       content: post.content,
-      category: post.category,
+      category: post.category as PostCategory,
       imageUrl: post.imageUrl,
       createdAt: post.createdAt.toISOString(),
       user: {
@@ -157,7 +190,7 @@ export async function action({ request }: ActionFunctionArgs) {
       post: {
         id: post.id,
         content: post.content,
-        category: post.category,
+        category: post.category as PostCategory,
         imageUrl: post.imageUrl,
         createdAt: post.createdAt.toISOString(),
         user: {
@@ -184,6 +217,7 @@ export default function Index() {
     PostCategory | PostCategory[] | null
   >(null);
   const fetcher = useFetcher();
+  const navigate = useNavigate();
 
   // Handle category from URL parameters
   useEffect(() => {
@@ -202,13 +236,19 @@ export default function Index() {
     }
   }, [searchParams]);
 
-  const filteredPosts = selectedCategory
-    ? Array.isArray(selectedCategory)
-      ? posts.filter((post: PostWithUser) =>
-          selectedCategory.includes(post.category)
-        )
-      : posts.filter((post: PostWithUser) => post.category === selectedCategory)
-    : posts;
+  const handleCategorySelect = (
+    category: PostCategory | PostCategory[] | null
+  ) => {
+    setSelectedCategory(category);
+    if (category) {
+      const categoryParam = Array.isArray(category)
+        ? category.join(",")
+        : category;
+      navigate(`/?category=${categoryParam}`);
+    } else {
+      navigate("/");
+    }
+  };
 
   return (
     <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-8 mt-16">
@@ -218,16 +258,16 @@ export default function Index() {
           <div className="sticky top-24 w-full max-w-[260px]">
             <SidebarNav
               selectedCategory={selectedCategory}
-              onCategorySelect={setSelectedCategory}
+              onCategorySelect={handleCategorySelect}
             />
           </div>
         </aside>
 
         {/* Main Content */}
         <main className="lg:col-span-6">
-          <CreatePostForm user={user} fetcher={fetcher} />
+          {user && <CreatePostForm user={user} fetcher={fetcher} />}
           <div className="space-y-6">
-            {filteredPosts.map((post: PostWithUser) => (
+            {posts.map((post) => (
               <Post
                 key={post.id}
                 id={post.id}
@@ -246,6 +286,13 @@ export default function Index() {
                 currentUser={user}
               />
             ))}
+            {posts.length === 0 && (
+              <div className="text-center py-8">
+                <p className="text-gray-500 dark:text-gray-400">
+                  No posts found in this category
+                </p>
+              </div>
+            )}
           </div>
         </main>
 
@@ -266,7 +313,7 @@ export default function Index() {
               </div>
               {user ? (
                 <div className="space-y-4">
-                  {connections.map((connection: DbConnection) => (
+                  {connections.map((connection) => (
                     <div
                       key={connection.id}
                       className="flex items-center space-x-3"
