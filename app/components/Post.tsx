@@ -6,7 +6,7 @@ interface PostProps {
   id: string;
   content: string;
   category: PostCategory;
-  image: string | null;
+  imageUrl: string | null;
   timestamp: string;
   author: {
     name: string;
@@ -20,10 +20,11 @@ interface PostProps {
 }
 
 export function Post({
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   id,
   content,
   category,
-  image,
+  imageUrl,
   timestamp,
   author,
   upvotes: initialUpvotes,
@@ -72,10 +73,10 @@ export function Post({
 
       <p className="mt-4 text-gray-800 dark:text-gray-200">{content}</p>
 
-      {image && (
+      {imageUrl && (
         <div className="mt-4">
           <img
-            src={image}
+            src={imageUrl}
             alt="Post attachment"
             className="rounded-lg max-h-96 w-full object-cover"
           />

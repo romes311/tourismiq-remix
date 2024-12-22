@@ -1,84 +1,37 @@
-import type { MetaFunction, LoaderFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
-import { Form, Link, useLoaderData } from "@remix-run/react";
-import { db } from "~/utils/db.server";
+import {
+  json,
+  type LoaderFunctionArgs,
+  type ActionFunctionArgs,
+} from "@remix-run/node";
+import { Form, Link, useLoaderData, useFetcher } from "@remix-run/react";
+import { prisma } from "~/utils/db.server";
 import { authenticator } from "~/utils/auth.server";
 import { CreatePostForm } from "~/components/CreatePostForm";
+import { Post } from "~/components/Post";
+import { PostCategory } from "@prisma/client";
+import { saveImage } from "~/utils/upload.server";
+import { useEffect } from "react";
+import {
+  unstable_parseMultipartFormData,
+  writeAsyncIterableToWritable,
+} from "@remix-run/node";
 
-interface Connection {
+interface OptimisticPost {
   id: string;
-  name: string;
-  organization: string | null;
-  avatar: string | null;
-}
-
-export const meta: MetaFunction = () => {
-  return [
-    { title: "TourismIQ - Connect with DMOs" },
-    {
-      name: "description",
-      content: "A social platform for tourism DMO professionals",
-    },
-  ];
-};
-
-export async function loader({ request }: LoaderFunctionArgs) {
-  const user = await authenticator.isAuthenticated(request);
-
-  const [posts, rawConnections] = await Promise.all([
-    db.post.findMany({
-      orderBy: { createdAt: "desc" },
-      include: {
-        author: true,
-        _count: {
-          select: {
-            likes: true,
-            comments: true,
-          },
-        },
-      },
-      take: 20,
-    }),
-    user
-      ? db.user.findMany({
-          where: {
-            NOT: { id: user.id },
-          },
-          take: 5,
-          select: {
-            id: true,
-            name: true,
-            organization: true,
-            avatar: true,
-          },
-        })
-      : [],
-  ]);
-
-  const connections = (rawConnections as Connection[]).filter(
-    (connection): connection is Connection => connection !== null
-  );
-
-  return json({
-    user,
-    connections,
-    posts: posts.map((post) => ({
-      id: post.id,
-      content: post.content,
-      category: post.category,
-      timestamp: post.createdAt.toISOString(),
-      author: {
-        name: post.author.name,
-        organization: post.author.organization,
-        avatar:
-          post.author.avatar ||
-          `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.author.name}`,
-      },
-      likes: post._count.likes,
-      comments: post._count.comments,
-      shares: 0,
-    })),
-  });
+  content: string;
+  category: PostCategory;
+  imageUrl: string | null;
+  createdAt: string;
+  user: {
+    id: string;
+    name: string;
+    avatar: string | null;
+    organization: string;
+  };
+  likes: number;
+  comments: number;
+  shares: number;
+  isUploading?: boolean;
 }
 
 const categories = [
@@ -90,8 +43,191 @@ const categories = [
   { name: "Best Practices", href: "/?category=best-practices" },
 ];
 
+export async function loader({ request }: LoaderFunctionArgs) {
+  const user = await authenticator.isAuthenticated(request, {
+    failureRedirect: "/login",
+  });
+
+  const posts = await prisma.post.findMany({
+    orderBy: {
+      createdAt: "desc",
+    },
+    include: {
+      user: true,
+      _count: {
+        select: {
+          likes: true,
+          comments: true,
+        },
+      },
+    },
+    take: 20, // Limit to 20 most recent posts for performance
+  });
+
+  // Get connections (other users) for the right sidebar
+  const connections = user
+    ? await prisma.user.findMany({
+        where: {
+          NOT: { id: user.id },
+        },
+        take: 5,
+        select: {
+          id: true,
+          name: true,
+          organization: true,
+          avatar: true,
+        },
+      })
+    : [];
+
+  return json({
+    user,
+    connections,
+    posts: posts.map((post) => ({
+      id: post.id,
+      content: post.content,
+      category: post.category,
+      imageUrl: post.imageUrl,
+      createdAt: post.createdAt,
+      user: {
+        id: post.user.id,
+        name: post.user.name,
+        avatar: post.user.avatar,
+        organization: post.user.organization,
+      },
+      likes: post._count.likes,
+      comments: post._count.comments,
+      shares: 0, // Placeholder for future implementation
+    })),
+  });
+}
+
+export async function action({ request }: ActionFunctionArgs) {
+  const user = await authenticator.isAuthenticated(request, {
+    failureRedirect: "/login",
+  });
+
+  if (!user || !user.id) {
+    return json({ error: "User not authenticated" }, { status: 401 });
+  }
+
+  try {
+    const formData = await request.formData();
+    const content = formData.get("content");
+    const categoryValue = formData.get("category");
+    const imageFile = formData.get("image");
+
+    if (!content || typeof content !== "string") {
+      return json({ error: "Content is required" }, { status: 400 });
+    }
+
+    if (
+      !categoryValue ||
+      typeof categoryValue !== "string" ||
+      !(categoryValue in PostCategory)
+    ) {
+      return json({ error: "Valid category is required" }, { status: 400 });
+    }
+
+    const category = categoryValue as PostCategory;
+
+    let imageUrl: string | null = null;
+    if (imageFile && imageFile instanceof Blob && imageFile.size > 0) {
+      try {
+        imageUrl = await saveImage(imageFile);
+      } catch (error) {
+        console.error("Failed to save image:", error);
+        return json({ error: "Failed to upload image" }, { status: 400 });
+      }
+    }
+
+    const post = await prisma.post.create({
+      data: {
+        content,
+        category,
+        imageUrl,
+        userId: user.id,
+      },
+      include: {
+        user: true,
+        _count: {
+          select: {
+            likes: true,
+            comments: true,
+          },
+        },
+      },
+    });
+
+    return json({
+      success: true,
+      post: {
+        ...post,
+        user: {
+          id: post.user.id,
+          name: post.user.name,
+          avatar: post.user.avatar,
+          organization: post.user.organization,
+        },
+        likes: post._count.likes,
+        comments: post._count.comments,
+        shares: 0,
+      },
+    });
+  } catch (error) {
+    console.error("Failed to create post:", error);
+    return json({ error: "Failed to create post" }, { status: 400 });
+  }
+}
+
 export default function Index() {
   const { posts, user, connections } = useLoaderData<typeof loader>();
+  const fetcher = useFetcher();
+
+  // Get optimistic posts by combining existing posts with optimistic ones
+  const optimisticPosts: OptimisticPost[] = [...posts];
+  let cleanupTempImageUrl: (() => void) | undefined;
+
+  if (fetcher.formData) {
+    const content = fetcher.formData.get("content");
+    const category = fetcher.formData.get("category");
+    const imageFile = fetcher.formData.get("image") as File | null;
+
+    // Create temporary URL for image preview
+    let tempImageUrl: string | null = null;
+    if (imageFile && imageFile.size > 0) {
+      tempImageUrl = URL.createObjectURL(imageFile);
+      cleanupTempImageUrl = () => URL.revokeObjectURL(tempImageUrl!);
+    }
+
+    const optimisticPost: OptimisticPost = {
+      id: "optimistic-" + Date.now(),
+      content: content as string,
+      category: category as PostCategory,
+      imageUrl: tempImageUrl,
+      createdAt: new Date().toISOString(),
+      user: {
+        id: user.id,
+        name: user.name,
+        avatar: user.avatar ?? null,
+        organization: user.organization ?? "",
+      },
+      likes: 0,
+      comments: 0,
+      shares: 0,
+      isUploading: Boolean(imageFile),
+    };
+
+    optimisticPosts.unshift(optimisticPost);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (cleanupTempImageUrl) {
+        cleanupTempImageUrl();
+      }
+    };
+  }, [fetcher.formData]);
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
@@ -173,95 +309,26 @@ export default function Index() {
 
         {/* Main Content */}
         <main className="lg:col-span-6">
-          {user && <CreatePostForm />}
+          {user && <CreatePostForm user={user} fetcher={fetcher} />}
 
           <div className="space-y-6">
-            {posts.map((post) => (
-              <article
+            {optimisticPosts.map((post) => (
+              <Post
                 key={post.id}
-                className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-950"
-              >
-                <div className="flex items-center space-x-4">
-                  <img
-                    src={post.author.avatar}
-                    alt={post.author.name}
-                    className="h-12 w-12 rounded-full"
-                  />
-                  <div className="flex-1">
-                    <h2 className="font-semibold text-gray-900 dark:text-gray-100">
-                      {post.author.name}
-                    </h2>
-                    <div className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
-                      <span>{post.author.organization}</span>
-                      <span>•</span>
-                      <span>{new Date(post.timestamp).toLocaleString()}</span>
-                    </div>
-                  </div>
-                  <div className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                    {post.category
-                      .split("_")
-                      .map(
-                        (word) => word.charAt(0) + word.slice(1).toLowerCase()
-                      )
-                      .join(" ")}
-                  </div>
-                </div>
-
-                <p className="mt-4 text-gray-800 dark:text-gray-200">
-                  {post.content}
-                </p>
-
-                <div className="mt-4 flex space-x-6 text-gray-500 dark:text-gray-400">
-                  <button className="flex items-center space-x-2 hover:text-blue-600 dark:hover:text-blue-400">
-                    <svg
-                      className="h-5 w-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-                      />
-                    </svg>
-                    <span>{post.likes}</span>
-                  </button>
-                  <button className="flex items-center space-x-2 hover:text-blue-600 dark:hover:text-blue-400">
-                    <svg
-                      className="h-5 w-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                      />
-                    </svg>
-                    <span>{post.comments}</span>
-                  </button>
-                  <button className="flex items-center space-x-2 hover:text-blue-600 dark:hover:text-blue-400">
-                    <svg
-                      className="h-5 w-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
-                      />
-                    </svg>
-                    <span>{post.shares}</span>
-                  </button>
-                </div>
-              </article>
+                id={post.id}
+                content={post.content}
+                category={post.category}
+                imageUrl={post.imageUrl}
+                timestamp={post.createdAt}
+                author={{
+                  name: post.user.name,
+                  organization: post.user.organization,
+                  avatar: post.user.avatar,
+                }}
+                upvotes={post.likes}
+                comments={post.comments}
+                currentUser={user}
+              />
             ))}
           </div>
         </main>
@@ -281,7 +348,6 @@ export default function Index() {
                   View All
                 </Link>
               </div>
-
               {user ? (
                 <div className="space-y-4">
                   {connections.map((connection) => (

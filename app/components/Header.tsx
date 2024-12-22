@@ -21,11 +21,16 @@ export function Header({ user }: HeaderProps) {
           <div className="flex items-center gap-4">
             {user ? (
               <div className="flex items-center gap-4">
-                <div className="text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">
-                    Signed in as
-                  </span>{" "}
-                  <span className="text-gray-900 dark:text-gray-200 font-medium">
+                <div className="flex items-center gap-3">
+                  <img
+                    src={
+                      user.avatar ||
+                      `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name}`
+                    }
+                    alt={user.name}
+                    className="h-8 w-8 rounded-full"
+                  />
+                  <span className="text-sm text-gray-900 dark:text-gray-200 font-medium">
                     {user.name}
                   </span>
                 </div>

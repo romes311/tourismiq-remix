@@ -1,7 +1,7 @@
 import { Authenticator } from "remix-auth";
 import { GoogleStrategy } from "remix-auth-google";
 import { sessionStorage } from "./session.server";
-import { db } from "./db.server";
+import { prisma } from "./db.server";
 
 // Define the user type
 export interface User {
@@ -9,6 +9,7 @@ export interface User {
   email: string;
   name: string;
   organization?: string;
+  avatar?: string | null;
 }
 
 // Create an authenticator
@@ -37,45 +38,33 @@ authenticator.use(
       clientSecret: clientSecret || "",
       callbackURL: "http://localhost:3000/auth/google/callback",
     },
-    async ({ profile, accessToken }) => {
-      console.log("Google auth callback received:", {
-        profile: {
-          email: profile.emails[0].value,
-          name: profile.displayName,
-        },
-        accessTokenPresent: !!accessToken,
-      });
-
+    async ({ profile }) => {
       try {
+        // Get the avatar URL from Google profile
+        const avatar = profile.photos?.[0]?.value || null;
+
         // Get or create the user in the database
-        const user = await db.user.upsert({
+        const user = await prisma.user.upsert({
           where: { email: profile.emails[0].value },
           update: {
             name: profile.displayName,
+            avatar: avatar,
           },
           create: {
             email: profile.emails[0].value,
             name: profile.displayName,
             organization: "", // Will be updated in onboarding
+            avatar: avatar,
           },
         });
 
-        console.log("User upserted successfully:", {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          hasOrganization: !!user.organization,
-        });
-
-        const sessionUser = {
+        return {
           id: user.id,
           email: user.email,
           name: user.name,
           organization: user.organization,
+          avatar: user.avatar,
         };
-
-        console.log("Returning session user:", sessionUser);
-        return sessionUser;
       } catch (error) {
         console.error("Error in Google strategy callback:", error);
         throw error;
@@ -83,3 +72,10 @@ authenticator.use(
     }
   )
 );
+
+export async function requireUserId(request: Request): Promise<string> {
+  const user = await authenticator.isAuthenticated(request, {
+    failureRedirect: "/login",
+  });
+  return user.id;
+}

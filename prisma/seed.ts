@@ -45,7 +45,7 @@ async function seed() {
       data: {
         content:
           "Excited to announce our new sustainable tourism initiative! We're partnering with local businesses to reduce the environmental impact of tourism while enhancing visitor experiences. #SustainableTourism #VisitSeattle",
-        authorId: sarah.id,
+        userId: sarah.id,
         category: PostCategory.NEWS,
         hashtags: ["SustainableTourism", "VisitSeattle"],
       },
@@ -54,7 +54,7 @@ async function seed() {
       data: {
         content:
           "Just published our latest case study on the impact of digital marketing campaigns on tourist engagement. Some fascinating insights on social media's role in destination marketing. #TourismMarketing #DMO",
-        authorId: sarah.id,
+        userId: sarah.id,
         category: PostCategory.CASE_STUDIES,
         hashtags: ["TourismMarketing", "DMO"],
       },
@@ -65,7 +65,7 @@ async function seed() {
       data: {
         content:
           "Join us next month for our annual Tourism Innovation Summit! We'll be discussing the future of theme park experiences and sustainable tourism practices. #TourismInnovation #VisitOrlando",
-        authorId: michael.id,
+        userId: michael.id,
         category: PostCategory.EVENTS,
         hashtags: ["TourismInnovation", "VisitOrlando"],
       },
@@ -74,7 +74,7 @@ async function seed() {
       data: {
         content:
           "Check out our new video series showcasing Orlando's hidden gems beyond the theme parks. First episode features local artisans and food markets! #BeyondTheParks #LocalOrlando",
-        authorId: michael.id,
+        userId: michael.id,
         category: PostCategory.VIDEOS,
         hashtags: ["BeyondTheParks", "LocalOrlando"],
       },
@@ -85,7 +85,7 @@ async function seed() {
       data: {
         content:
           "Sharing our latest whitepaper on post-pandemic tourism recovery strategies. Great insights from our team and industry partners. #TourismRecovery #LondonTourism",
-        authorId: emma.id,
+        userId: emma.id,
         category: PostCategory.WHITEPAPERS,
         hashtags: ["TourismRecovery", "LondonTourism"],
       },
@@ -94,7 +94,7 @@ async function seed() {
       data: {
         content:
           "New blog post: '10 Hidden Historical Sites in London'. Discover the lesser-known stories of our city. #SecretLondon #HistoricalSites",
-        authorId: emma.id,
+        userId: emma.id,
         category: PostCategory.BLOG_POST,
         hashtags: ["SecretLondon", "HistoricalSites"],
       },

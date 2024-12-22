@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { Link } from "@remix-run/react";
-import { ClientOnly } from "remix-utils/client-only";
 
 interface Notification {
   type: "LIKE" | "COMMENT" | "FOLLOW" | "MENTION" | "REPLY";
@@ -17,11 +16,17 @@ interface Notification {
 }
 
 export function NotificationBell() {
-  return (
-    <ClientOnly fallback={<NotificationBellFallback />}>
-      {() => <NotificationBellContent />}
-    </ClientOnly>
-  );
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return <NotificationBellFallback />;
+  }
+
+  return <NotificationBellContent />;
 }
 
 function NotificationBellFallback() {
@@ -52,17 +57,8 @@ function NotificationBellFallback() {
 function NotificationBellContent() {
   const [notifications] = useState<Notification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const unreadCount = notifications.length;
-
-  if (!mounted) {
-    return <NotificationBellFallback />;
-  }
 
   return (
     <div className="relative">

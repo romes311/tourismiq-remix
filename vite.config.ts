@@ -21,6 +21,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
     },
+    publicDir: "public",
     define: {
       "process.env.GOOGLE_CLIENT_ID": JSON.stringify(env.GOOGLE_CLIENT_ID),
       "process.env.GOOGLE_CLIENT_SECRET": JSON.stringify(
