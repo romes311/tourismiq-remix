@@ -67,15 +67,15 @@ export function SidebarNav({
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <nav className="space-y-4">
+    <div className="flex flex-col h-full w-full">
+      <nav className="space-y-1 mb-6">
         {navItems.map((item) => {
           if (item.href) {
             return (
               <Link
                 key={item.label}
                 to={item.href}
-                className="block px-3 py-2 text-base font-medium text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-50 dark:hover:bg-gray-900"
+                className="block w-full px-3 py-2 text-lg font-medium text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-50 dark:hover:bg-gray-900"
               >
                 {item.label}
               </Link>
@@ -86,7 +86,7 @@ export function SidebarNav({
             <button
               key={item.label}
               onClick={() => handleCategoryClick(item.value || null)}
-              className={`w-full flex items-center px-3 py-2 text-base rounded-md ${
+              className={`w-full flex items-center px-3 py-2 text-lg rounded-md ${
                 item.value && isSelected(item.value)
                   ? "bg-blue-50 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 font-medium"
                   : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-900"
@@ -98,17 +98,17 @@ export function SidebarNav({
         })}
 
         {/* Education (Coming Soon) */}
-        <div className="px-3 py-2 text-base font-medium text-gray-400 dark:text-gray-500">
+        <div className="px-3 py-2 text-lg font-medium text-gray-400 dark:text-gray-500">
           Education (Coming Soon)
         </div>
 
         {/* Bookmarks */}
         <Link
           to="/bookmarks"
-          className="flex items-center px-3 py-2 text-base font-medium text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-50 dark:hover:bg-gray-900"
+          className="flex items-center w-full px-3 py-2 text-lg font-medium text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-50 dark:hover:bg-gray-900"
         >
           <svg
-            className="h-5 w-5 mr-2"
+            className="h-4 w-4 mr-2"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -125,20 +125,20 @@ export function SidebarNav({
       </nav>
 
       {/* Newsletter */}
-      <div className="mt-8">
-        <h3 className="px-3 mb-2 text-base font-medium text-gray-900 dark:text-white">
+      <div className="bg-white dark:bg-gray-950 p-3 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800 mb-6">
+        <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-2">
           Subscribe to our Newsletter
         </h3>
-        <Form method="post" action="/newsletter" className="px-3">
+        <Form method="post" action="/newsletter">
           <input
             type="email"
             name="email"
             placeholder="Email Address*"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white text-sm"
+            className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white text-sm mb-2"
           />
           <button
             type="submit"
-            className="mt-2 w-full bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 text-sm"
+            className="w-full bg-blue-500 text-white px-3 py-1.5 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 text-sm"
           >
             Sign Up
           </button>
@@ -146,8 +146,8 @@ export function SidebarNav({
       </div>
 
       {/* Footer */}
-      <div className="mt-auto pt-8 px-3">
-        <div className="flex space-x-4 text-sm text-gray-500 dark:text-gray-400">
+      <div className="mt-auto px-3">
+        <div className="flex flex-wrap gap-3 text-xs text-gray-500 dark:text-gray-400">
           <Link
             to="/sponsorships"
             className="hover:text-gray-700 dark:hover:text-gray-300"
@@ -167,7 +167,7 @@ export function SidebarNav({
             Privacy Policy
           </Link>
         </div>
-        <div className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+        <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
           © TourismIQ 2024. All rights reserved.
         </div>
       </div>

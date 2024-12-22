@@ -35,31 +35,6 @@ interface PostWithUser {
   shares: number;
 }
 
-interface DbPost {
-  id: string;
-  content: string;
-  category: PostCategory;
-  imageUrl: string | null;
-  createdAt: Date;
-  user: {
-    id: string;
-    name: string;
-    avatar: string | null;
-    organization: string | null;
-  };
-  _count: {
-    likes: number;
-    comments: number;
-  };
-}
-
-interface DbConnection {
-  id: string;
-  name: string;
-  organization: string | null;
-  avatar: string | null;
-}
-
 export async function loader({ request }: LoaderFunctionArgs) {
   const user = await authenticator.isAuthenticated(request, {
     failureRedirect: "/login",
@@ -67,8 +42,20 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const posts = await prisma.post.findMany({
     orderBy: { createdAt: "desc" },
-    include: {
-      user: true,
+    select: {
+      id: true,
+      content: true,
+      category: true,
+      imageUrl: true,
+      createdAt: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          avatar: true,
+          organization: true,
+        },
+      },
       _count: {
         select: {
           likes: true,
@@ -78,43 +65,38 @@ export async function loader({ request }: LoaderFunctionArgs) {
     },
   });
 
-  // Get connections (other users) for the right sidebar
-  const connections = user
-    ? await prisma.user.findMany({
-        where: {
-          NOT: { id: user.id },
-        },
-        take: 5,
-        select: {
-          id: true,
-          name: true,
-          organization: true,
-          avatar: true,
-        },
-      })
-    : [];
+  const connections = await prisma.user.findMany({
+    where: {
+      NOT: { id: user.id },
+    },
+    take: 5,
+    select: {
+      id: true,
+      name: true,
+      organization: true,
+      avatar: true,
+    },
+  });
 
   return json({
     user,
-    connections: connections as DbConnection[],
-    posts: posts.map(
-      (post: DbPost): PostWithUser => ({
-        id: post.id,
-        content: post.content,
-        category: post.category,
-        imageUrl: post.imageUrl,
-        createdAt: post.createdAt.toISOString(),
-        user: {
-          id: post.user.id,
-          name: post.user.name,
-          avatar: post.user.avatar,
-          organization: post.user.organization,
-        },
-        likes: post._count.likes,
-        comments: post._count.comments,
-        shares: 0,
-      })
-    ),
+    posts: posts.map((post) => ({
+      id: post.id,
+      content: post.content,
+      category: post.category,
+      imageUrl: post.imageUrl,
+      createdAt: post.createdAt.toISOString(),
+      user: {
+        id: post.user.id,
+        name: post.user.name,
+        avatar: post.user.avatar,
+        organization: post.user.organization,
+      },
+      likes: post._count.likes,
+      comments: post._count.comments,
+      shares: 0,
+    })),
+    connections,
   });
 }
 
@@ -229,11 +211,11 @@ export default function Index() {
     : posts;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 mt-16">
+    <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-8 mt-16">
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
         {/* Left Sidebar */}
         <aside className="lg:col-span-3">
-          <div className="sticky top-24">
+          <div className="sticky top-24 w-full max-w-[260px]">
             <SidebarNav
               selectedCategory={selectedCategory}
               onCategorySelect={setSelectedCategory}
@@ -269,7 +251,7 @@ export default function Index() {
 
         {/* Right Sidebar */}
         <aside className="lg:col-span-3">
-          <div className="sticky top-24 space-y-8">
+          <div className="sticky top-24">
             <div className="bg-white dark:bg-gray-950 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-gray-900 dark:text-white">
@@ -324,40 +306,6 @@ export default function Index() {
                 </div>
               )}
             </div>
-
-            {/* Newsletter */}
-            <div className="bg-white dark:bg-gray-950 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800">
-              <h3 className="font-semibold text-gray-900 dark:text-white mb-4">
-                Stay Updated
-              </h3>
-              <Form method="post" action="/newsletter" className="space-y-4">
-                <input
-                  type="email"
-                  name="email"
-                  placeholder="Enter your email"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-                />
-                <button
-                  type="submit"
-                  className="w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  Subscribe
-                </button>
-              </Form>
-            </div>
-
-            {/* Footer */}
-            <footer className="text-sm text-gray-500 dark:text-gray-400">
-              <p>© 2024 TourismIQ. All rights reserved.</p>
-              <div className="mt-2 space-x-4">
-                <a href="/privacy" className="hover:text-blue-600">
-                  Privacy
-                </a>
-                <a href="/terms" className="hover:text-blue-600">
-                  Terms
-                </a>
-              </div>
-            </footer>
           </div>
         </aside>
       </div>

@@ -6,6 +6,7 @@ import { UserAboutTab } from "~/components/UserAboutTab";
 import { useState } from "react";
 import type { User } from "~/utils/auth.server";
 import { ProfileImage } from "~/components/ProfileImage";
+import { UserPosts } from "~/components/UserPosts";
 
 type Tab =
   | "about"
@@ -47,7 +48,7 @@ export default function Dashboard() {
 
   return (
     <div className="mt-16 min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+      <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-8 mt-16">
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
           {/* Left Sidebar */}
           <aside className="lg:col-span-3">
@@ -134,6 +135,7 @@ export default function Dashboard() {
                     onUserUpdate={handleUserUpdate}
                   />
                 )}
+                {activeTab === "posts" && <UserPosts user={user} />}
                 {/* Add other tab content components here */}
               </div>
             </div>
