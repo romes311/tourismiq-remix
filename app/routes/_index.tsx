@@ -16,11 +16,12 @@ import { Post } from "~/components/Post";
 import { uploadImage } from "~/utils/upload.server";
 import { useState, useEffect } from "react";
 import { SidebarNav } from "~/components/SidebarNav";
+import type { PostCategory } from "@prisma/client";
 
 interface PostWithUser {
   id: string;
   content: string;
-  category: string;
+  category: PostCategory;
   imageUrl: string | null;
   createdAt: string;
   user: {
@@ -37,7 +38,7 @@ interface PostWithUser {
 interface DbPost {
   id: string;
   content: string;
-  category: string;
+  category: PostCategory;
   imageUrl: string | null;
   createdAt: Date;
   user: {
@@ -154,9 +155,9 @@ export async function action({ request }: ActionFunctionArgs) {
     const post = await prisma.post.create({
       data: {
         content,
-        category: categoryValue,
+        category: categoryValue as PostCategory,
         imageUrl,
-        userId: user.id, // Associate the post with the user
+        userId: user.id,
       },
       include: {
         user: true,
@@ -221,8 +222,10 @@ export default function Index() {
 
   const filteredPosts = selectedCategory
     ? Array.isArray(selectedCategory)
-      ? posts.filter((post) => selectedCategory.includes(post.category))
-      : posts.filter((post) => post.category === selectedCategory)
+      ? posts.filter((post: PostWithUser) =>
+          selectedCategory.includes(post.category)
+        )
+      : posts.filter((post: PostWithUser) => post.category === selectedCategory)
     : posts;
 
   return (
@@ -242,7 +245,7 @@ export default function Index() {
         <main className="lg:col-span-6">
           <CreatePostForm user={user} fetcher={fetcher} />
           <div className="space-y-6">
-            {filteredPosts.map((post) => (
+            {filteredPosts.map((post: PostWithUser) => (
               <Post
                 key={post.id}
                 id={post.id}
@@ -281,7 +284,7 @@ export default function Index() {
               </div>
               {user ? (
                 <div className="space-y-4">
-                  {connections.map((connection) => (
+                  {connections.map((connection: DbConnection) => (
                     <div
                       key={connection.id}
                       className="flex items-center space-x-3"
