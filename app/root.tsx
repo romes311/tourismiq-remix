@@ -9,6 +9,7 @@ import {
 import type { LinksFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { authenticator } from "./utils/auth.server";
+import { prisma } from "./utils/db.server";
 import { Header } from "./components/Header";
 
 import "./tailwind.css";
@@ -27,7 +28,27 @@ export const links: LinksFunction = () => [
 ];
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const user = await authenticator.isAuthenticated(request);
+  const sessionUser = await authenticator.isAuthenticated(request);
+
+  if (!sessionUser) {
+    return json({ user: null });
+  }
+
+  // Get fresh user data from the database
+  const user = await prisma.user.findUnique({
+    where: { id: sessionUser.id },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      avatar: true,
+      organization: true,
+      jobTitle: true,
+      linkedIn: true,
+      location: true,
+    },
+  });
+
   return json({ user });
 }
 

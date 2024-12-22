@@ -15,14 +15,17 @@
     "seed": "prisma db seed"
   },
   "dependencies": {
+    "@google-cloud/storage": "^7.14.0",
     "@prisma/client": "^6.1.0",
     "@remix-run/node": "^2.15.1",
     "@remix-run/react": "^2.15.1",
     "@remix-run/serve": "^2.15.1",
     "@types/uuid": "^10.0.0",
+    "cropperjs": "^1.6.2",
     "isbot": "^4.1.0",
     "prisma": "^6.1.0",
     "react": "^18.2.0",
+    "react-cropper": "^2.3.3",
     "react-dom": "^18.2.0",
     "remix-auth": "^3.7.0",
     "remix-auth-google": "^2.0.0",

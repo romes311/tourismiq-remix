@@ -3,45 +3,61 @@ import {
   type LoaderFunctionArgs,
   type ActionFunctionArgs,
 } from "@remix-run/node";
-import { Form, Link, useLoaderData, useFetcher } from "@remix-run/react";
+import {
+  Form,
+  useLoaderData,
+  useFetcher,
+  useSearchParams,
+} from "@remix-run/react";
 import { prisma } from "~/utils/db.server";
 import { authenticator } from "~/utils/auth.server";
 import { CreatePostForm } from "~/components/CreatePostForm";
 import { Post } from "~/components/Post";
-import { PostCategory } from "@prisma/client";
-import { saveImage } from "~/utils/upload.server";
-import { useEffect } from "react";
-import {
-  unstable_parseMultipartFormData,
-  writeAsyncIterableToWritable,
-} from "@remix-run/node";
+import { uploadImage } from "~/utils/upload.server";
+import { useState, useEffect } from "react";
+import { SidebarNav } from "~/components/SidebarNav";
 
-interface OptimisticPost {
+interface PostWithUser {
   id: string;
   content: string;
-  category: PostCategory;
+  category: string;
   imageUrl: string | null;
   createdAt: string;
   user: {
     id: string;
     name: string;
     avatar: string | null;
-    organization: string;
+    organization: string | null;
   };
   likes: number;
   comments: number;
   shares: number;
-  isUploading?: boolean;
 }
 
-const categories = [
-  { name: "All Posts", href: "/" },
-  { name: "Events", href: "/?category=events" },
-  { name: "Marketing", href: "/?category=marketing" },
-  { name: "Research", href: "/?category=research" },
-  { name: "Technology", href: "/?category=technology" },
-  { name: "Best Practices", href: "/?category=best-practices" },
-];
+interface DbPost {
+  id: string;
+  content: string;
+  category: string;
+  imageUrl: string | null;
+  createdAt: Date;
+  user: {
+    id: string;
+    name: string;
+    avatar: string | null;
+    organization: string | null;
+  };
+  _count: {
+    likes: number;
+    comments: number;
+  };
+}
+
+interface DbConnection {
+  id: string;
+  name: string;
+  organization: string | null;
+  avatar: string | null;
+}
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const user = await authenticator.isAuthenticated(request, {
@@ -49,9 +65,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   });
 
   const posts = await prisma.post.findMany({
-    orderBy: {
-      createdAt: "desc",
-    },
+    orderBy: { createdAt: "desc" },
     include: {
       user: true,
       _count: {
@@ -61,7 +75,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
         },
       },
     },
-    take: 20, // Limit to 20 most recent posts for performance
   });
 
   // Get connections (other users) for the right sidebar
@@ -82,23 +95,25 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   return json({
     user,
-    connections,
-    posts: posts.map((post) => ({
-      id: post.id,
-      content: post.content,
-      category: post.category,
-      imageUrl: post.imageUrl,
-      createdAt: post.createdAt,
-      user: {
-        id: post.user.id,
-        name: post.user.name,
-        avatar: post.user.avatar,
-        organization: post.user.organization,
-      },
-      likes: post._count.likes,
-      comments: post._count.comments,
-      shares: 0, // Placeholder for future implementation
-    })),
+    connections: connections as DbConnection[],
+    posts: posts.map(
+      (post: DbPost): PostWithUser => ({
+        id: post.id,
+        content: post.content,
+        category: post.category,
+        imageUrl: post.imageUrl,
+        createdAt: post.createdAt.toISOString(),
+        user: {
+          id: post.user.id,
+          name: post.user.name,
+          avatar: post.user.avatar,
+          organization: post.user.organization,
+        },
+        likes: post._count.likes,
+        comments: post._count.comments,
+        shares: 0,
+      })
+    ),
   });
 }
 
@@ -121,32 +136,27 @@ export async function action({ request }: ActionFunctionArgs) {
       return json({ error: "Content is required" }, { status: 400 });
     }
 
-    if (
-      !categoryValue ||
-      typeof categoryValue !== "string" ||
-      !(categoryValue in PostCategory)
-    ) {
+    if (!categoryValue || typeof categoryValue !== "string") {
       return json({ error: "Valid category is required" }, { status: 400 });
     }
-
-    const category = categoryValue as PostCategory;
 
     let imageUrl: string | null = null;
     if (imageFile && imageFile instanceof Blob && imageFile.size > 0) {
       try {
-        imageUrl = await saveImage(imageFile);
+        imageUrl = await uploadImage(imageFile);
       } catch (error) {
         console.error("Failed to save image:", error);
         return json({ error: "Failed to upload image" }, { status: 400 });
       }
     }
 
+    // Create the post with user association
     const post = await prisma.post.create({
       data: {
         content,
-        category,
+        category: categoryValue,
         imageUrl,
-        userId: user.id,
+        userId: user.id, // Associate the post with the user
       },
       include: {
         user: true,
@@ -162,7 +172,11 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({
       success: true,
       post: {
-        ...post,
+        id: post.id,
+        content: post.content,
+        category: post.category,
+        imageUrl: post.imageUrl,
+        createdAt: post.createdAt.toISOString(),
         user: {
           id: post.user.id,
           name: post.user.name,
@@ -181,138 +195,54 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 export default function Index() {
-  const { posts, user, connections } = useLoaderData<typeof loader>();
+  const { user, posts, connections } = useLoaderData<typeof loader>();
+  const [searchParams] = useSearchParams();
+  const [selectedCategory, setSelectedCategory] = useState<
+    PostCategory | PostCategory[] | null
+  >(null);
   const fetcher = useFetcher();
 
-  // Get optimistic posts by combining existing posts with optimistic ones
-  const optimisticPosts: OptimisticPost[] = [...posts];
-  let cleanupTempImageUrl: (() => void) | undefined;
-
-  if (fetcher.formData) {
-    const content = fetcher.formData.get("content");
-    const category = fetcher.formData.get("category");
-    const imageFile = fetcher.formData.get("image") as File | null;
-
-    // Create temporary URL for image preview
-    let tempImageUrl: string | null = null;
-    if (imageFile && imageFile.size > 0) {
-      tempImageUrl = URL.createObjectURL(imageFile);
-      cleanupTempImageUrl = () => URL.revokeObjectURL(tempImageUrl!);
-    }
-
-    const optimisticPost: OptimisticPost = {
-      id: "optimistic-" + Date.now(),
-      content: content as string,
-      category: category as PostCategory,
-      imageUrl: tempImageUrl,
-      createdAt: new Date().toISOString(),
-      user: {
-        id: user.id,
-        name: user.name,
-        avatar: user.avatar ?? null,
-        organization: user.organization ?? "",
-      },
-      likes: 0,
-      comments: 0,
-      shares: 0,
-      isUploading: Boolean(imageFile),
-    };
-
-    optimisticPosts.unshift(optimisticPost);
-  }
-
+  // Handle category from URL parameters
   useEffect(() => {
-    return () => {
-      if (cleanupTempImageUrl) {
-        cleanupTempImageUrl();
+    const categoryParam = searchParams.get("category");
+    if (categoryParam) {
+      if (categoryParam.includes(",")) {
+        // Handle multiple categories (Resources)
+        const categories = categoryParam.split(",") as PostCategory[];
+        setSelectedCategory(categories);
+      } else {
+        // Handle single category
+        setSelectedCategory(categoryParam as PostCategory);
       }
-    };
-  }, [fetcher.formData]);
+    } else {
+      setSelectedCategory(null);
+    }
+  }, [searchParams]);
+
+  const filteredPosts = selectedCategory
+    ? Array.isArray(selectedCategory)
+      ? posts.filter((post) => selectedCategory.includes(post.category))
+      : posts.filter((post) => post.category === selectedCategory)
+    : posts;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 mt-16">
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
         {/* Left Sidebar */}
         <aside className="lg:col-span-3">
-          <div className="sticky top-8 space-y-8">
-            {/* Categories */}
-            <nav className="space-y-1">
-              {categories.map((category) => (
-                <Link
-                  key={category.name}
-                  to={category.href}
-                  className="block px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-blue-600 rounded-md dark:text-gray-200 dark:hover:bg-gray-800"
-                >
-                  {category.name}
-                </Link>
-              ))}
-            </nav>
-
-            {/* Bookmarks */}
-            <div>
-              <Link
-                to="/bookmarks"
-                className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-blue-600 rounded-md dark:text-gray-200 dark:hover:bg-gray-800"
-              >
-                <svg
-                  className="h-5 w-5 mr-2"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
-                  />
-                </svg>
-                Bookmarks
-              </Link>
-            </div>
-
-            {/* Newsletter */}
-            <div className="bg-white dark:bg-gray-950 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800">
-              <h3 className="font-semibold text-gray-900 dark:text-white mb-4">
-                Stay Updated
-              </h3>
-              <Form method="post" action="/newsletter" className="space-y-4">
-                <input
-                  type="email"
-                  name="email"
-                  placeholder="Enter your email"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-                />
-                <button
-                  type="submit"
-                  className="w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  Subscribe
-                </button>
-              </Form>
-            </div>
-
-            {/* Footer */}
-            <footer className="text-sm text-gray-500 dark:text-gray-400">
-              <p>© 2024 TourismIQ. All rights reserved.</p>
-              <div className="mt-2 space-x-4">
-                <Link to="/privacy" className="hover:text-blue-600">
-                  Privacy
-                </Link>
-                <Link to="/terms" className="hover:text-blue-600">
-                  Terms
-                </Link>
-              </div>
-            </footer>
+          <div className="sticky top-24">
+            <SidebarNav
+              selectedCategory={selectedCategory}
+              onCategorySelect={setSelectedCategory}
+            />
           </div>
         </aside>
 
         {/* Main Content */}
         <main className="lg:col-span-6">
-          {user && <CreatePostForm user={user} fetcher={fetcher} />}
-
+          <CreatePostForm user={user} fetcher={fetcher} />
           <div className="space-y-6">
-            {optimisticPosts.map((post) => (
+            {filteredPosts.map((post) => (
               <Post
                 key={post.id}
                 id={post.id}
@@ -327,6 +257,7 @@ export default function Index() {
                 }}
                 upvotes={post.likes}
                 comments={post.comments}
+                shares={post.shares}
                 currentUser={user}
               />
             ))}
@@ -335,18 +266,18 @@ export default function Index() {
 
         {/* Right Sidebar */}
         <aside className="lg:col-span-3">
-          <div className="sticky top-8 space-y-8">
+          <div className="sticky top-24 space-y-8">
             <div className="bg-white dark:bg-gray-950 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-gray-900 dark:text-white">
                   Connections
                 </h3>
-                <Link
-                  to="/members"
+                <a
+                  href="/members"
                   className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400"
                 >
                   View All
-                </Link>
+                </a>
               </div>
               {user ? (
                 <div className="space-y-4">
@@ -390,6 +321,40 @@ export default function Index() {
                 </div>
               )}
             </div>
+
+            {/* Newsletter */}
+            <div className="bg-white dark:bg-gray-950 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800">
+              <h3 className="font-semibold text-gray-900 dark:text-white mb-4">
+                Stay Updated
+              </h3>
+              <Form method="post" action="/newsletter" className="space-y-4">
+                <input
+                  type="email"
+                  name="email"
+                  placeholder="Enter your email"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                />
+                <button
+                  type="submit"
+                  className="w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  Subscribe
+                </button>
+              </Form>
+            </div>
+
+            {/* Footer */}
+            <footer className="text-sm text-gray-500 dark:text-gray-400">
+              <p>© 2024 TourismIQ. All rights reserved.</p>
+              <div className="mt-2 space-x-4">
+                <a href="/privacy" className="hover:text-blue-600">
+                  Privacy
+                </a>
+                <a href="/terms" className="hover:text-blue-600">
+                  Terms
+                </a>
+              </div>
+            </footer>
           </div>
         </aside>
       </div>

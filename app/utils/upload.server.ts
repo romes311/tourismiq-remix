@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 
 const UPLOAD_DIR = "public/uploads";
 
-export async function saveImage(file: Blob): Promise<string> {
+export async function uploadImage(file: Blob): Promise<string> {
   // Ensure upload directory exists
   try {
     await mkdir(UPLOAD_DIR, { recursive: true });
@@ -13,17 +13,8 @@ export async function saveImage(file: Blob): Promise<string> {
     throw new Error("Failed to create upload directory");
   }
 
-  // Get the file extension from the content type
-  const type = file.type.split("/")[1];
-  const extension = type ? `.${type}` : ".jpg"; // Default to .jpg if no extension found
-
-  const allowedExtensions = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
-  if (!allowedExtensions.includes(extension)) {
-    throw new Error("Invalid file type. Only images are allowed.");
-  }
-
-  // Generate unique filename
-  const filename = `${uuidv4()}${extension}`;
+  // Generate unique filename with extension
+  const filename = `${uuidv4()}.png`;
   const filepath = path.join(UPLOAD_DIR, filename);
 
   try {
@@ -37,7 +28,5 @@ export async function saveImage(file: Blob): Promise<string> {
   }
 }
 
-export async function uploadHandler(part: Blob) {
-  const filename = await saveImage(part);
-  return filename;
-}
+// Alias for backward compatibility
+export const saveImage = uploadImage;

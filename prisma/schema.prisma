@@ -17,16 +17,18 @@ model User {
   id            String    @id @default(cuid())
   email         String    @unique
   name          String
-  organization  String
   avatar        String?
-  bio           String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  organization  String?
+  jobTitle      String?
+  linkedIn      String?
+  location      String?
   posts         Post[]
   likes         Like[]
   comments      Comment[]
-  followers     Follow[]  @relation("following")
-  following     Follow[]  @relation("follower")
+  followers     Follow[]  @relation("follower")
+  following     Follow[]  @relation("following")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 enum PostCategory {

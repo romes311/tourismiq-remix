@@ -8,8 +8,11 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  organization?: string;
   avatar?: string | null;
+  organization?: string | null;
+  jobTitle?: string | null;
+  linkedIn?: string | null;
+  location?: string | null;
 }
 
 // Create an authenticator
