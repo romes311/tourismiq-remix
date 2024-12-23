@@ -7,6 +7,7 @@ import { useState } from "react";
 import type { User } from "~/utils/auth.server";
 import { ProfileImage } from "~/components/ProfileImage";
 import { UserPosts } from "~/components/UserPosts";
+import { UserComments } from "~/components/UserComments";
 
 type Tab =
   | "about"
@@ -136,6 +137,7 @@ export default function Dashboard() {
                   />
                 )}
                 {activeTab === "posts" && <UserPosts user={user} />}
+                {activeTab === "comments" && <UserComments user={user} />}
                 {/* Add other tab content components here */}
               </div>
             </div>

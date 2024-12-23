@@ -25,41 +25,23 @@ model User {
   posts         Post[]
   likes         Like[]
   comments      Comment[]
-  followers     Follow[]  @relation("follower")
-  following     Follow[]  @relation("following")
+  shares        Share[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
 
-enum PostCategory {
-  THOUGHT_LEADERSHIP
-  NEWS
-  EVENTS
-  BLOG_POST
-  BOOKS
-  COURSES
-  PODCASTS
-  PRESENTATIONS
-  PRESS_RELEASES
-  TEMPLATES
-  VIDEOS
-  WEBINARS
-  CASE_STUDIES
-  WHITEPAPERS
-}
-
 model Post {
-  id        String   @id @default(cuid())
-  content   String
-  imageUrl  String?
-  category  PostCategory
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  likes     Like[]
-  likeCount Int      @default(0)
-  comments  Comment[]
+  id           String       @id @default(cuid())
+  content      String
+  imageUrl     String?
+  category     String
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  likes        Like[]
+  comments     Comment[]
+  shares       Share[]
 
   @@index([userId])
 }
@@ -67,6 +49,7 @@ model Post {
 model Like {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   postId    String
   userId    String
   post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
@@ -86,15 +69,19 @@ model Comment {
   userId    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([postId])
+  @@index([userId])
 }
 
-model Follow {
-  id          String   @id @default(cuid())
-  follower    User     @relation("follower", fields: [followerId], references: [id])
-  followerId  String
-  following   User     @relation("following", fields: [followingId], references: [id])
-  followingId String
-  createdAt   DateTime @default(now())
+model Share {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String
+  postId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
 
-  @@unique([followerId, followingId])
+  @@index([postId])
 }

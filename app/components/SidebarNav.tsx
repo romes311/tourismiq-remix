@@ -36,11 +36,13 @@ const navItems: NavItem[] = [
 interface SidebarNavProps {
   selectedCategory?: PostCategory | PostCategory[] | null;
   onCategorySelect?: (category: PostCategory | PostCategory[] | null) => void;
+  isDashboard?: boolean;
 }
 
 export function SidebarNav({
   selectedCategory,
   onCategorySelect,
+  isDashboard = false,
 }: SidebarNavProps) {
   const navigate = useNavigate();
 
@@ -60,6 +62,14 @@ export function SidebarNav({
   };
 
   const handleCategorySelect = (value: PostCategory | PostCategory[]) => {
+    // If we're on the dashboard, always navigate to home with the category
+    if (isDashboard) {
+      const categoryParam = Array.isArray(value) ? value.join(",") : value;
+      navigate(`/?category=${categoryParam}`);
+      return;
+    }
+
+    // Normal home page behavior
     if (onCategorySelect) {
       const isCurrentlySelected = isSelected(value);
       const newValue = isCurrentlySelected ? null : value;
@@ -81,7 +91,8 @@ export function SidebarNav({
     <div className="flex flex-col h-full">
       <nav className="space-y-1">
         {navItems.map((item) => {
-          const selected = item.value ? isSelected(item.value) : false;
+          const selected =
+            !isDashboard && item.value ? isSelected(item.value) : false;
 
           if (item.href) {
             return (

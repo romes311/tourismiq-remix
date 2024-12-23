@@ -1,4 +1,4 @@
-import { PrismaClient, PostCategory } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 const db = new PrismaClient();
 
 async function seed() {
@@ -6,7 +6,6 @@ async function seed() {
   await db.comment.deleteMany();
   await db.like.deleteMany();
   await db.post.deleteMany();
-  await db.follow.deleteMany();
   await db.user.deleteMany();
 
   console.log("🧹 Cleaned database...");
@@ -52,7 +51,7 @@ async function seed() {
     data: {
       content:
         "Excited to share our latest campaign highlighting Seattle's vibrant food scene! We've partnered with local chefs to showcase the unique flavors of the Pacific Northwest. #VisitSeattle #FoodTourism",
-      category: PostCategory.THOUGHT_LEADERSHIP,
+      category: "THOUGHT_LEADERSHIP",
       userId: sarah.id,
     },
   });
@@ -61,7 +60,7 @@ async function seed() {
     data: {
       content:
         "Denver's winter tourism numbers are breaking records! Our strategic focus on outdoor adventures and urban experiences is paying off. Here's what we learned... #TourismMarketing #DMO",
-      category: PostCategory.NEWS,
+      category: "NEWS",
       userId: michael.id,
     },
   });
@@ -70,7 +69,7 @@ async function seed() {
     data: {
       content:
         "Just released our 2024 Visitor Guide! Check out the digital version for an immersive experience of Orlando's attractions. #VisitOrlando #TravelTech",
-      category: PostCategory.NEWS,
+      category: "NEWS",
       userId: emma.id,
     },
   });

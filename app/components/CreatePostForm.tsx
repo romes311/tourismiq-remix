@@ -262,10 +262,9 @@ function CreatePostModal({
                   Post content
                 </label>
                 <textarea
-                  id="content"
                   name="content"
-                  rows={5}
-                  className="w-full rounded-lg border-0 bg-transparent text-gray-900 placeholder:text-gray-500 focus:ring-0 text-lg"
+                  rows={4}
+                  className="block w-full rounded-lg border-0 px-3 py-2 text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-700 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-inset focus:ring-blue-600 dark:focus:ring-blue-500 dark:bg-gray-900 sm:text-sm sm:leading-6"
                   placeholder="What would you like to share?"
                   required
                   aria-label="Post content"
