@@ -30,18 +30,20 @@ export function initializeSocketIO(httpServer: HTTPServer) {
   });
 
   io.on("connection", (socket) => {
-    console.log("Client connected:", socket.id);
-
     const userId = socket.handshake.auth.userId;
     if (userId) {
       socket.join(`user:${userId}`);
-      console.log(`User ${userId} joined their room`);
+      if (process.env.NODE_ENV === "development") {
+        console.log(`WebSocket: User ${userId} connected (${socket.id})`);
+      }
     }
 
     socket.on("disconnect", () => {
       if (userId) {
         socket.leave(`user:${userId}`);
-        console.log(`User ${userId} left their room`);
+        if (process.env.NODE_ENV === "development") {
+          console.log(`WebSocket: User ${userId} disconnected (${socket.id})`);
+        }
       }
     });
   });
@@ -62,6 +64,8 @@ export function emitNotification(payload: NotificationPayload) {
     return;
   }
 
-  console.log(`Emitting notification to user:${payload.userId}`, payload.data);
+  if (process.env.NODE_ENV === "development") {
+    console.log(`WebSocket: Emitting notification to user:${payload.userId}`);
+  }
   io.to(`user:${payload.userId}`).emit("notification", payload.data);
 }

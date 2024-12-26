@@ -28,6 +28,10 @@ export async function action({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
   const action = formData.get("action");
 
+  if (!action) {
+    return json({ error: "Missing action parameter" }, { status: 400 });
+  }
+
   if (action === "clear") {
     await prisma.notification.deleteMany({
       where: {
@@ -37,5 +41,5 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ success: true });
   }
 
-  return json({ error: "Invalid action" }, { status: 400 });
+  return json({ error: `Invalid action: ${action}` }, { status: 400 });
 }

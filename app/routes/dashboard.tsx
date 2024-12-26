@@ -40,6 +40,7 @@ interface LoaderData {
     name: string;
     avatar: string | null;
     organization: string | null;
+    connectionId: string;
   }>;
 }
 
@@ -72,37 +73,54 @@ export async function loader({ request }: LoaderFunctionArgs) {
       },
     }),
     // Get accepted connections
-    prisma.user.findMany({
+    prisma.connection.findMany({
       where: {
         OR: [
           {
-            sentConnections: {
-              some: {
-                receiverId: user.id,
-                status: "accepted",
-              },
-            },
+            senderId: user.id,
+            status: "accepted",
           },
           {
-            receivedConnections: {
-              some: {
-                senderId: user.id,
-                status: "accepted",
-              },
-            },
+            receiverId: user.id,
+            status: "accepted",
           },
         ],
       },
-      select: {
-        id: true,
-        name: true,
-        avatar: true,
-        organization: true,
+      include: {
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            avatar: true,
+            organization: true,
+          },
+        },
+        receiver: {
+          select: {
+            id: true,
+            name: true,
+            avatar: true,
+            organization: true,
+          },
+        },
       },
     }),
   ]);
 
-  return json<LoaderData>({ user, pendingConnections, acceptedConnections });
+  // Transform accepted connections to include the correct user info
+  const transformedAcceptedConnections = acceptedConnections.map((connection) => {
+    const otherUser = connection.senderId === user.id ? connection.receiver : connection.sender;
+    return {
+      ...otherUser,
+      connectionId: connection.id,
+    };
+  });
+
+  return json<LoaderData>({
+    user,
+    pendingConnections,
+    acceptedConnections: transformedAcceptedConnections
+  });
 }
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -114,32 +132,84 @@ export async function action({ request }: ActionFunctionArgs) {
   const connectionId = formData.get("connectionId")?.toString();
   const action = formData.get("action")?.toString();
 
+  console.log("[Dashboard Action] Received request:", {
+    userId: user.id,
+    connectionId,
+    action,
+    formData: Object.fromEntries(formData),
+  });
+
   if (!connectionId || !action) {
+    console.log("[Dashboard Action] Invalid request: missing connectionId or action");
     return json<ActionData>({ error: "Invalid request" }, { status: 400 });
   }
 
   try {
     const connection = await prisma.connection.findUnique({
       where: { id: connectionId },
-      include: { sender: true },
+      include: { sender: true, receiver: true },
     });
 
+    console.log("[Dashboard Action] Found connection:", connection);
+
     if (!connection) {
+      console.log("[Dashboard Action] Connection not found:", { connectionId });
       return json<ActionData>({ error: "Connection not found" }, { status: 404 });
     }
 
-    if (connection.receiverId !== user.id) {
-      return json<ActionData>(
-        { error: "Not authorized to perform this action" },
-        { status: 403 }
-      );
+    // For accept/reject actions, only the receiver can perform them
+    if (action === "accept" || action === "reject") {
+      if (connection.receiverId !== user.id) {
+        console.log("[Dashboard Action] Not authorized:", {
+          userId: user.id,
+          receiverId: connection.receiverId,
+          action,
+        });
+        return json<ActionData>(
+          { error: "Not authorized to perform this action" },
+          { status: 403 }
+        );
+      }
+    }
+
+    // For disconnect action, either user can perform it
+    if (action === "disconnect") {
+      if (connection && connection.senderId !== user.id && connection.receiverId !== user.id) {
+        console.log("[Dashboard Action] Not authorized to disconnect:", {
+          userId: user.id,
+          senderId: connection.senderId,
+          receiverId: connection.receiverId,
+        });
+        return json<ActionData>(
+          { error: "Not authorized to perform this action" },
+          { status: 403 }
+        );
+      }
+
+      try {
+        await prisma.connection.delete({
+          where: { id: connectionId },
+        });
+
+        console.log("[Dashboard Action] Deleted connection:", { connectionId });
+        return json<ActionData>({ success: true });
+      } catch (error) {
+        // If the connection doesn't exist, consider it a success since that's the desired end state
+        if (error instanceof Error && error.message.includes('Record to delete does not exist')) {
+          console.log("[Dashboard Action] Connection already deleted:", { connectionId });
+          return json<ActionData>({ success: true });
+        }
+        throw error; // Re-throw other errors to be caught by the outer try-catch
+      }
     }
 
     if (action === "accept") {
-      await prisma.connection.update({
+      const updatedConnection = await prisma.connection.update({
         where: { id: connectionId },
         data: { status: "accepted" },
       });
+
+      console.log("[Dashboard Action] Updated connection:", updatedConnection);
 
       // Create notification for the sender
       const notification = await prisma.notification.create({
@@ -151,6 +221,8 @@ export async function action({ request }: ActionFunctionArgs) {
         },
       });
 
+      console.log("[Dashboard Action] Created notification:", notification);
+
       // Emit real-time notification
       emitNotification({
         type: "connection_accepted",
@@ -158,29 +230,27 @@ export async function action({ request }: ActionFunctionArgs) {
         data: {
           id: notification.id,
           message: notification.message,
-          metadata: notification.metadata,
+          metadata: notification.metadata as { connectionId?: string },
         },
       });
 
+      console.log("[Dashboard Action] Emitted notification");
+
       return json<ActionData>({ success: true });
     } else if (action === "reject") {
-      await prisma.connection.update({
+      const updatedConnection = await prisma.connection.update({
         where: { id: connectionId },
         data: { status: "rejected" },
       });
 
-      return json<ActionData>({ success: true });
-    } else if (action === "disconnect") {
-      await prisma.connection.delete({
-        where: { id: connectionId },
-      });
-
+      console.log("[Dashboard Action] Rejected connection:", updatedConnection);
       return json<ActionData>({ success: true });
     }
 
+    console.log("[Dashboard Action] Invalid action:", { action });
     return json<ActionData>({ error: "Invalid action" }, { status: 400 });
   } catch (error) {
-    console.error("Error handling connection request:", error);
+    console.error("[Dashboard Action] Error handling connection request:", error);
     return json<ActionData>(
       { error: "Failed to process request" },
       { status: 500 }
@@ -415,7 +485,7 @@ export default function Dashboard() {
                                   </div>
                                 </Link>
                                 <connectionFetcher.Form method="post">
-                                  <input type="hidden" name="connectionId" value={connection.id} />
+                                  <input type="hidden" name="connectionId" value={connection.connectionId} />
                                   <input type="hidden" name="action" value="disconnect" />
                                   <button
                                     type="submit"

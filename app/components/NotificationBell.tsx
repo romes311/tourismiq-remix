@@ -62,13 +62,12 @@ export function NotificationBell({ user }: NotificationBellProps) {
 
   // Update notifications when data changes
   useEffect(() => {
-    if (fetcher.data) {
-      setNotifications(fetcher.data.notifications);
-      setUnreadCount(
-        fetcher.data.notifications.filter((n: Notification) => !n.read).length
-      );
+    if (fetcher.state === "idle" && fetcher.data) {
+      const notificationsList = fetcher.data.notifications || [];
+      setNotifications(notificationsList);
+      setUnreadCount(notificationsList.filter((n) => !n.read).length);
     }
-  }, [fetcher.data]);
+  }, [fetcher.data, fetcher.state]);
 
   // Connect to WebSocket
   useEffect(() => {
@@ -78,12 +77,18 @@ export function NotificationBell({ user }: NotificationBellProps) {
       transports: ["websocket"],
     });
 
-    socket.on("connect", () => {
-      console.log("Connected to WebSocket");
-    });
+    // Only log in development
+    if (process.env.NODE_ENV === "development") {
+      socket.on("connect", () => {
+        console.log("WebSocket connected");
+      });
+
+      socket.on("disconnect", () => {
+        console.log("WebSocket disconnected");
+      });
+    }
 
     socket.on("notification", (notification: Notification) => {
-      console.log("Received notification:", notification);
       setNotifications((prev) => [notification, ...prev]);
       if (!notification.read) {
         setUnreadCount((prev) => prev + 1);
@@ -100,7 +105,7 @@ export function NotificationBell({ user }: NotificationBellProps) {
   // Handle clearing notifications
   const handleClearNotifications = () => {
     fetcher.submit(
-      { _action: "clear" },
+      { action: "clear" },
       { method: "POST", action: "/api/notifications" }
     );
   };
@@ -134,7 +139,7 @@ export function NotificationBell({ user }: NotificationBellProps) {
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
               Notifications
             </h3>
-            {notifications.length > 0 && (
+            {notifications.length > 0 && !fetcher.state.includes("submitting") && (
               <button
                 onClick={handleClearNotifications}
                 className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
@@ -144,7 +149,11 @@ export function NotificationBell({ user }: NotificationBellProps) {
             )}
           </div>
           <div className="max-h-96 overflow-y-auto">
-            {notifications.length === 0 ? (
+            {fetcher.state === "submitting" ? (
+              <div className="p-4 text-center text-gray-500 dark:text-gray-400">
+                Clearing notifications...
+              </div>
+            ) : notifications.length === 0 ? (
               <div className="p-4 text-center text-gray-500 dark:text-gray-400">
                 No notifications
               </div>
