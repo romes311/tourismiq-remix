@@ -14,20 +14,27 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  name          String
-  avatar        String?
-  organization  String?
-  jobTitle      String?
-  linkedIn      String?
-  location      String?
-  posts         Post[]
-  likes         Like[]
-  comments      Comment[]
-  shares        Share[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id                String    @id @default(cuid())
+  email             String    @unique
+  name              String
+  avatar            String?
+  organization      String?
+  jobTitle          String?
+  linkedIn          String?
+  location          String?
+  posts             Post[]
+  likes             Like[]
+  comments          Comment[]
+  shares            Share[]
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Connections
+  sentConnections     Connection[] @relation("SentConnections")
+  receivedConnections Connection[] @relation("ReceivedConnections")
+
+  // Notifications
+  notifications       Notification[]
 }
 
 model Post {
@@ -84,4 +91,36 @@ model Share {
   post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@index([postId])
+}
+
+model Connection {
+  id          String   @id @default(cuid())
+  status      String   @default("pending") // pending, accepted, rejected
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  sender      User     @relation("SentConnections", fields: [senderId], references: [id])
+  senderId    String
+  receiver    User     @relation("ReceivedConnections", fields: [receiverId], references: [id])
+  receiverId  String
+
+  @@index([senderId])
+  @@index([receiverId])
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  type        String
+  message     String
+  read        Boolean  @default(false)
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String
+
+  @@index([userId])
 }

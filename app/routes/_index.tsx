@@ -98,9 +98,27 @@ export async function loader({ request }: LoaderFunctionArgs) {
     },
   });
 
+  // Get user connections for right sidebar
   const connections = await prisma.user.findMany({
     where: {
-      NOT: { id: user?.id },
+      OR: [
+        {
+          receivedConnections: {
+            some: {
+              senderId: user?.id,
+              status: "accepted",
+            },
+          },
+        },
+        {
+          sentConnections: {
+            some: {
+              receiverId: user?.id,
+              status: "accepted",
+            },
+          },
+        },
+      ],
     },
     take: 5,
     select: {

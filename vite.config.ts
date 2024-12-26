@@ -3,6 +3,7 @@ import { vitePlugin as remix } from "@remix-run/dev";
 import tsconfigPaths from "vite-tsconfig-paths";
 import { dirname } from "path";
 import { fileURLToPath } from "url";
+import { Server } from "socket.io";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -21,6 +22,36 @@ export default defineConfig(({ mode }) => {
         },
       }),
       tsconfigPaths(),
+      {
+        name: "socket-io",
+        configureServer(server) {
+          const io = new Server(server.httpServer, {
+            cors: {
+              origin: "*",
+              methods: ["GET", "POST"],
+              credentials: true,
+            },
+            path: "/ws",
+          });
+
+          io.on("connection", (socket) => {
+            console.log("Client connected:", socket.id);
+
+            const userId = socket.handshake.auth.userId;
+            if (userId) {
+              socket.join(`user:${userId}`);
+              console.log(`User ${userId} joined their room`);
+            }
+
+            socket.on("disconnect", () => {
+              if (userId) {
+                socket.leave(`user:${userId}`);
+                console.log(`User ${userId} left their room`);
+              }
+            });
+          });
+        },
+      },
     ],
     server: {
       port: 3000,

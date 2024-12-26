@@ -1,13 +1,17 @@
-import { json, type LoaderFunctionArgs } from "@remix-run/node";
-import { Link, useLoaderData } from "@remix-run/react";
+import { json, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/node";
+import { Link, useLoaderData, useFetcher } from "@remix-run/react";
 import { authenticator } from "~/utils/auth.server";
 import { SidebarNav } from "~/components/SidebarNav";
 import { UserAboutTab } from "~/components/UserAboutTab";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { User } from "~/utils/auth.server";
 import { ProfileImage } from "~/components/ProfileImage";
 import { UserPosts } from "~/components/UserPosts";
 import { UserComments } from "~/components/UserComments";
+import { prisma } from "~/utils/db.server";
+import { emitNotification } from "~/utils/socket.server";
+import { useToast } from "~/hooks/use-toast";
+import { Toaster } from "~/components/ui/toaster";
 
 type Tab =
   | "about"
@@ -19,22 +23,211 @@ type Tab =
   | "qa"
   | "score";
 
+interface LoaderData {
+  user: User;
+  pendingConnections: Array<{
+    id: string;
+    status: string;
+    sender: {
+      id: string;
+      name: string;
+      avatar: string | null;
+      organization: string | null;
+    };
+  }>;
+  acceptedConnections: Array<{
+    id: string;
+    name: string;
+    avatar: string | null;
+    organization: string | null;
+  }>;
+}
+
+interface ActionData {
+  success?: boolean;
+  error?: string;
+}
+
 export async function loader({ request }: LoaderFunctionArgs) {
   const user = await authenticator.isAuthenticated(request, {
     failureRedirect: "/login",
   });
 
-  return json({ user });
+  const [pendingConnections, acceptedConnections] = await Promise.all([
+    // Get pending connection requests
+    prisma.connection.findMany({
+      where: {
+        receiverId: user.id,
+        status: "pending",
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            avatar: true,
+            organization: true,
+          },
+        },
+      },
+    }),
+    // Get accepted connections
+    prisma.user.findMany({
+      where: {
+        OR: [
+          {
+            receivedConnections: {
+              some: {
+                senderId: user.id,
+                status: "accepted",
+              },
+            },
+          },
+          {
+            sentConnections: {
+              some: {
+                receiverId: user.id,
+                status: "accepted",
+              },
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        avatar: true,
+        organization: true,
+      },
+    }),
+  ]);
+
+  return json<LoaderData>({ user, pendingConnections, acceptedConnections });
+}
+
+export async function action({ request }: ActionFunctionArgs) {
+  const user = await authenticator.isAuthenticated(request, {
+    failureRedirect: "/login",
+  });
+
+  const formData = await request.formData();
+  const connectionId = formData.get("connectionId");
+  const action = formData.get("action");
+
+  if (!connectionId || typeof connectionId !== "string" || !action || typeof action !== "string") {
+    return json({ error: "Invalid request" }, { status: 400 });
+  }
+
+  try {
+    if (action === "disconnect") {
+      // Find both possible connection directions (as sender or receiver)
+      const connections = await prisma.connection.findMany({
+        where: {
+          OR: [
+            { senderId: user.id, receiverId: connectionId },
+            { senderId: connectionId, receiverId: user.id }
+          ],
+          status: "accepted"
+        }
+      });
+
+      if (connections.length === 0) {
+        return json({ error: "Connection not found" }, { status: 404 });
+      }
+
+      // Delete all matching connections
+      await prisma.connection.deleteMany({
+        where: {
+          OR: [
+            { senderId: user.id, receiverId: connectionId },
+            { senderId: connectionId, receiverId: user.id }
+          ],
+          status: "accepted"
+        }
+      });
+
+      return json({ success: true });
+    }
+
+    // Existing accept/reject logic
+    const connection = await prisma.connection.findUnique({
+      where: { id: connectionId },
+      include: { sender: true },
+    });
+
+    if (!connection || connection.receiverId !== user.id) {
+      return json({ error: "Connection not found" }, { status: 404 });
+    }
+
+    if (action === "accept") {
+      await prisma.connection.update({
+        where: { id: connectionId },
+        data: { status: "accepted" },
+      });
+
+      // Create notification for sender
+      const notification = await prisma.notification.create({
+        data: {
+          type: "connection_accepted",
+          message: `${user.name} accepted your connection request`,
+          userId: connection.senderId,
+          metadata: { connectionId },
+        },
+      });
+
+      // Emit real-time notification
+      emitNotification({
+        type: "connection_accepted",
+        userId: connection.senderId,
+        data: {
+          id: notification.id,
+          message: notification.message,
+          metadata: notification.metadata,
+        },
+      });
+    } else if (action === "reject") {
+      await prisma.connection.update({
+        where: { id: connectionId },
+        data: { status: "rejected" },
+      });
+    }
+
+    return json({ success: true });
+  } catch (error) {
+    console.error("Failed to handle connection request:", error);
+    return json({ error: "Failed to handle connection request" }, { status: 500 });
+  }
 }
 
 export default function Dashboard() {
-  const { user: initialUser } = useLoaderData<typeof loader>();
+  const { user: initialUser, pendingConnections, acceptedConnections } = useLoaderData<typeof loader>();
   const [user, setUser] = useState<User>(initialUser);
   const [activeTab, setActiveTab] = useState<Tab>("about");
+  const connectionFetcher = useFetcher<ActionData>();
+  const { toast } = useToast();
 
   const handleUserUpdate = (updatedUser: User) => {
     setUser(updatedUser);
   };
+
+  // Handle fetcher states for toasts
+  useEffect(() => {
+    if (connectionFetcher.state === "idle" && connectionFetcher.data) {
+      if (connectionFetcher.data.success) {
+        toast({
+          variant: "success",
+          title: "Success",
+          description: "Connection request handled successfully",
+        });
+      } else if (connectionFetcher.data.error) {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: connectionFetcher.data.error,
+        });
+      }
+    }
+  }, [connectionFetcher.state, connectionFetcher.data, toast]);
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "about", label: "About" },
@@ -138,12 +331,126 @@ export default function Dashboard() {
                 )}
                 {activeTab === "posts" && <UserPosts user={user} />}
                 {activeTab === "comments" && <UserComments user={user} />}
-                {/* Add other tab content components here */}
+                {activeTab === "connections" && (
+                  <div className="space-y-8">
+                    {/* Pending Connections */}
+                    {pendingConnections.length > 0 && (
+                      <div>
+                        <h2 className="text-xl font-semibold mb-4">Pending Connections</h2>
+                        <div className="space-y-4">
+                          {pendingConnections.map((connection) => (
+                            <div
+                              key={connection.id}
+                              className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-4">
+                                  <img
+                                    src={
+                                      connection.sender.avatar ||
+                                      `https://api.dicebear.com/7.x/avataaars/svg?seed=${connection.sender.name}`
+                                    }
+                                    alt={connection.sender.name}
+                                    className="w-12 h-12 rounded-full"
+                                  />
+                                  <div>
+                                    <h3 className="font-semibold">{connection.sender.name}</h3>
+                                    {connection.sender.organization && (
+                                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                                        {connection.sender.organization}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex space-x-2">
+                                  <connectionFetcher.Form method="post">
+                                    <input type="hidden" name="connectionId" value={connection.id} />
+                                    <input type="hidden" name="action" value="accept" />
+                                    <button
+                                      type="submit"
+                                      disabled={connectionFetcher.state !== "idle"}
+                                      className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                                    >
+                                      {connectionFetcher.state !== "idle" ? "Accepting..." : "Accept"}
+                                    </button>
+                                  </connectionFetcher.Form>
+                                  <connectionFetcher.Form method="post">
+                                    <input type="hidden" name="connectionId" value={connection.id} />
+                                    <input type="hidden" name="action" value="reject" />
+                                    <button
+                                      type="submit"
+                                      disabled={connectionFetcher.state !== "idle"}
+                                      className="bg-gray-100 text-gray-600 px-4 py-2 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50"
+                                    >
+                                      {connectionFetcher.state !== "idle" ? "Rejecting..." : "Reject"}
+                                    </button>
+                                  </connectionFetcher.Form>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Accepted Connections */}
+                    <div>
+                      <h2 className="text-xl font-semibold mb-4">Connections</h2>
+                      {acceptedConnections.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {acceptedConnections.map((connection) => (
+                            <div
+                              key={connection.id}
+                              className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-4">
+                                  <img
+                                    src={
+                                      connection.avatar ||
+                                      `https://api.dicebear.com/7.x/avataaars/svg?seed=${connection.name}`
+                                    }
+                                    alt={connection.name}
+                                    className="w-12 h-12 rounded-full"
+                                  />
+                                  <div>
+                                    <h3 className="font-semibold">{connection.name}</h3>
+                                    {connection.organization && (
+                                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                                        {connection.organization}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                                <connectionFetcher.Form method="post">
+                                  <input type="hidden" name="connectionId" value={connection.id} />
+                                  <input type="hidden" name="action" value="disconnect" />
+                                  <button
+                                    type="submit"
+                                    disabled={connectionFetcher.state !== "idle"}
+                                    className="text-sm text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 font-medium"
+                                  >
+                                    {connectionFetcher.state !== "idle" ? "Disconnecting..." : "Disconnect"}
+                                  </button>
+                                </connectionFetcher.Form>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+                          No connections yet
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </main>
         </div>
       </div>
+      <Toaster />
     </div>
   );
 }

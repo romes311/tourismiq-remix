@@ -1,6 +1,7 @@
 import { Form, Link } from "@remix-run/react";
 import { useState, useRef, useEffect } from "react";
 import type { User } from "~/utils/auth.server";
+import { NotificationBell } from "./NotificationBell";
 
 interface HeaderProps {
   user?: User | null;
@@ -41,55 +42,58 @@ export function Header({ user }: HeaderProps) {
 
           <div className="flex items-center gap-4">
             {user ? (
-              <div className="relative">
-                <button
-                  ref={buttonRef}
-                  onClick={() => setIsOpen(!isOpen)}
-                  className="flex items-center gap-3 rounded-full hover:ring-2 hover:ring-gray-200 dark:hover:ring-gray-700 transition-all p-0.5"
-                >
-                  <img
-                    src={
-                      user.avatar ||
-                      `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name}`
-                    }
-                    alt={user.name}
-                    className="h-8 w-8 rounded-full"
-                  />
-                </button>
-
-                {isOpen && (
-                  <div
-                    ref={popoverRef}
-                    className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-900 rounded-md shadow-lg border border-gray-200 dark:border-gray-800 py-1 z-50"
+              <>
+                <NotificationBell user={user} />
+                <div className="relative">
+                  <button
+                    ref={buttonRef}
+                    onClick={() => setIsOpen(!isOpen)}
+                    className="flex items-center gap-3 rounded-full hover:ring-2 hover:ring-gray-200 dark:hover:ring-gray-700 transition-all p-0.5"
                   >
-                    <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-800">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">
-                        {user.name}
-                      </p>
-                      {user.organization && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          {user.organization}
-                        </p>
-                      )}
-                    </div>
-                    <Link
-                      to="/dashboard"
-                      className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                      onClick={() => setIsOpen(false)}
+                    <img
+                      src={
+                        user.avatar ||
+                        `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name}`
+                      }
+                      alt={user.name}
+                      className="h-8 w-8 rounded-full"
+                    />
+                  </button>
+
+                  {isOpen && (
+                    <div
+                      ref={popoverRef}
+                      className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-900 rounded-md shadow-lg border border-gray-200 dark:border-gray-800 py-1 z-50"
                     >
-                      My Profile
-                    </Link>
-                    <Form action="/logout" method="post">
-                      <button
-                        type="submit"
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                      <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-800">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">
+                          {user.name}
+                        </p>
+                        {user.organization && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {user.organization}
+                          </p>
+                        )}
+                      </div>
+                      <Link
+                        to="/dashboard"
+                        className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                        onClick={() => setIsOpen(false)}
                       >
-                        Sign out
-                      </button>
-                    </Form>
-                  </div>
-                )}
-              </div>
+                        My Profile
+                      </Link>
+                      <Form action="/logout" method="post">
+                        <button
+                          type="submit"
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                        >
+                          Sign out
+                        </button>
+                      </Form>
+                    </div>
+                  )}
+                </div>
+              </>
             ) : (
               <div className="flex items-center gap-4">
                 <Form action="/auth/google" method="get">
