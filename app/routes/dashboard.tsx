@@ -1,17 +1,17 @@
 import { json, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/node";
 import { Link, useLoaderData, useFetcher } from "@remix-run/react";
-import { authenticator } from "~/utils/auth.server";
-import { SidebarNav } from "~/components/SidebarNav";
-import { UserAboutTab } from "~/components/UserAboutTab";
 import { useState, useEffect } from "react";
+import { authenticator } from "~/utils/auth.server";
 import type { User } from "~/utils/auth.server";
-import { ProfileImage } from "~/components/ProfileImage";
-import { UserPosts } from "~/components/UserPosts";
-import { UserComments } from "~/components/UserComments";
 import { prisma } from "~/utils/db.server";
 import { emitNotification } from "~/utils/socket.server";
 import { useToast } from "~/hooks/use-toast";
-import { Toaster } from "~/components/ui/toaster";
+import { SidebarNav } from "~/components/SidebarNav";
+import { UserAboutTab } from "~/components/UserAboutTab";
+import { UserPosts } from "~/components/UserPosts";
+import { UserComments } from "~/components/UserComments";
+import { ProfileImage } from "~/components/ProfileImage";
+import { Toaster } from "~/components/ui";
 
 type Tab =
   | "about"
@@ -76,17 +76,17 @@ export async function loader({ request }: LoaderFunctionArgs) {
       where: {
         OR: [
           {
-            receivedConnections: {
+            sentConnections: {
               some: {
-                senderId: user.id,
+                receiverId: user.id,
                 status: "accepted",
               },
             },
           },
           {
-            sentConnections: {
+            receivedConnections: {
               some: {
-                receiverId: user.id,
+                senderId: user.id,
                 status: "accepted",
               },
             },
@@ -111,52 +111,28 @@ export async function action({ request }: ActionFunctionArgs) {
   });
 
   const formData = await request.formData();
-  const connectionId = formData.get("connectionId");
-  const action = formData.get("action");
+  const connectionId = formData.get("connectionId")?.toString();
+  const action = formData.get("action")?.toString();
 
-  if (!connectionId || typeof connectionId !== "string" || !action || typeof action !== "string") {
-    return json({ error: "Invalid request" }, { status: 400 });
+  if (!connectionId || !action) {
+    return json<ActionData>({ error: "Invalid request" }, { status: 400 });
   }
 
   try {
-    if (action === "disconnect") {
-      // Find both possible connection directions (as sender or receiver)
-      const connections = await prisma.connection.findMany({
-        where: {
-          OR: [
-            { senderId: user.id, receiverId: connectionId },
-            { senderId: connectionId, receiverId: user.id }
-          ],
-          status: "accepted"
-        }
-      });
-
-      if (connections.length === 0) {
-        return json({ error: "Connection not found" }, { status: 404 });
-      }
-
-      // Delete all matching connections
-      await prisma.connection.deleteMany({
-        where: {
-          OR: [
-            { senderId: user.id, receiverId: connectionId },
-            { senderId: connectionId, receiverId: user.id }
-          ],
-          status: "accepted"
-        }
-      });
-
-      return json({ success: true });
-    }
-
-    // Existing accept/reject logic
     const connection = await prisma.connection.findUnique({
       where: { id: connectionId },
       include: { sender: true },
     });
 
-    if (!connection || connection.receiverId !== user.id) {
-      return json({ error: "Connection not found" }, { status: 404 });
+    if (!connection) {
+      return json<ActionData>({ error: "Connection not found" }, { status: 404 });
+    }
+
+    if (connection.receiverId !== user.id) {
+      return json<ActionData>(
+        { error: "Not authorized to perform this action" },
+        { status: 403 }
+      );
     }
 
     if (action === "accept") {
@@ -165,12 +141,12 @@ export async function action({ request }: ActionFunctionArgs) {
         data: { status: "accepted" },
       });
 
-      // Create notification for sender
+      // Create notification for the sender
       const notification = await prisma.notification.create({
         data: {
+          userId: connection.senderId,
           type: "connection_accepted",
           message: `${user.name} accepted your connection request`,
-          userId: connection.senderId,
           metadata: { connectionId },
         },
       });
@@ -185,17 +161,30 @@ export async function action({ request }: ActionFunctionArgs) {
           metadata: notification.metadata,
         },
       });
+
+      return json<ActionData>({ success: true });
     } else if (action === "reject") {
       await prisma.connection.update({
         where: { id: connectionId },
         data: { status: "rejected" },
       });
+
+      return json<ActionData>({ success: true });
+    } else if (action === "disconnect") {
+      await prisma.connection.delete({
+        where: { id: connectionId },
+      });
+
+      return json<ActionData>({ success: true });
     }
 
-    return json({ success: true });
+    return json<ActionData>({ error: "Invalid action" }, { status: 400 });
   } catch (error) {
-    console.error("Failed to handle connection request:", error);
-    return json({ error: "Failed to handle connection request" }, { status: 500 });
+    console.error("Error handling connection request:", error);
+    return json<ActionData>(
+      { error: "Failed to process request" },
+      { status: 500 }
+    );
   }
 }
 
@@ -404,7 +393,10 @@ export default function Dashboard() {
                               className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700"
                             >
                               <div className="flex items-center justify-between">
-                                <div className="flex items-center space-x-4">
+                                <Link
+                                  to={`/profile/${connection.id}`}
+                                  className="flex items-center space-x-4 hover:opacity-80 transition-opacity"
+                                >
                                   <img
                                     src={
                                       connection.avatar ||
@@ -421,7 +413,7 @@ export default function Dashboard() {
                                       </p>
                                     )}
                                   </div>
-                                </div>
+                                </Link>
                                 <connectionFetcher.Form method="post">
                                   <input type="hidden" name="connectionId" value={connection.id} />
                                   <input type="hidden" name="action" value="disconnect" />

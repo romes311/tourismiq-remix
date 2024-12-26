@@ -9,6 +9,7 @@ import {
   useFetcher,
   useSearchParams,
   useNavigate,
+  Link,
 } from "@remix-run/react";
 import { prisma } from "~/utils/db.server";
 import { authenticator } from "~/utils/auth.server";
@@ -19,6 +20,7 @@ import { uploadImage } from "~/utils/upload.server";
 import { useState, useEffect } from "react";
 import { SidebarNav } from "~/components/SidebarNav";
 import { PostCategory } from "~/types/post";
+import { SidebarConnections } from "~/components/SidebarConnections";
 
 interface PostWithUser {
   id: string;
@@ -316,62 +318,7 @@ export default function Index() {
 
         {/* Right Sidebar */}
         <aside className="lg:col-span-3">
-          <div className="sticky top-24">
-            <div className="bg-white dark:bg-gray-950 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-gray-900 dark:text-white">
-                  Connections
-                </h3>
-                <a
-                  href="/members"
-                  className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400"
-                >
-                  View All
-                </a>
-              </div>
-              {user ? (
-                <div className="space-y-4">
-                  {connections.map((connection) => (
-                    <div
-                      key={connection.id}
-                      className="flex items-center space-x-3"
-                    >
-                      <img
-                        src={
-                          connection.avatar ||
-                          `https://api.dicebear.com/7.x/avataaars/svg?seed=${connection.name}`
-                        }
-                        alt={connection.name}
-                        className="h-8 w-8 rounded-full"
-                      />
-                      <div>
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">
-                          {connection.name}
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          {connection.organization}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center p-4 space-y-4">
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Sign in to connect with other DMO professionals
-                  </p>
-                  <Form action="/auth/google" method="get">
-                    <button
-                      type="submit"
-                      className="w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                    >
-                      Sign in with Google
-                    </button>
-                  </Form>
-                </div>
-              )}
-            </div>
-          </div>
+          <SidebarConnections user={user} connections={connections} />
         </aside>
       </div>
     </div>
