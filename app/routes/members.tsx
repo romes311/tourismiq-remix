@@ -5,6 +5,10 @@ import { prisma } from "~/utils/db.server";
 import { authenticator } from "~/utils/auth.server";
 import type { User } from "~/utils/auth.server";
 import { SidebarConnections } from "~/components/SidebarConnections";
+import { emitNotification } from "~/utils/socket.server";
+import { useEffect } from "react";
+import { useToast } from "~/hooks/use-toast";
+import { Toaster } from "~/components/ui/toaster";
 
 interface Member {
   id: string;
@@ -23,6 +27,11 @@ interface LoaderData {
     organization: string | null;
     avatar: string | null;
   }>;
+}
+
+interface ActionData {
+  error?: string;
+  success?: boolean;
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -51,18 +60,24 @@ export async function loader({ request }: LoaderFunctionArgs) {
         receivedConnections: {
           where: {
             senderId: user.id,
+            status: { not: "rejected" },
           },
           select: {
+            id: true,
             status: true,
           },
+          take: 1,
         },
         sentConnections: {
           where: {
             receiverId: user.id,
+            status: { not: "rejected" },
           },
           select: {
+            id: true,
             status: true,
           },
+          take: 1,
         },
       },
     }),
@@ -99,10 +114,25 @@ export async function loader({ request }: LoaderFunctionArgs) {
   ]);
 
   // Transform the data to include connection status
-  const membersWithStatus = members.map((member) => {
+  const membersWithStatus: Member[] = members.map((member) => {
     const receivedConnection = member.receivedConnections[0];
     const sentConnection = member.sentConnections[0];
-    const connectionStatus = receivedConnection?.status || sentConnection?.status || null;
+    let connectionStatus: "pending" | "accepted" | null = null;
+
+    // Only consider non-rejected connections
+    if (receivedConnection?.status === "accepted" || sentConnection?.status === "accepted") {
+      connectionStatus = "accepted";
+    } else if (receivedConnection?.status === "pending" || sentConnection?.status === "pending") {
+      connectionStatus = "pending";
+    }
+
+    // If the connection exists but is rejected, treat as no connection
+    if (
+      (receivedConnection?.status === "rejected" && !sentConnection) ||
+      (sentConnection?.status === "rejected" && !receivedConnection)
+    ) {
+      connectionStatus = null;
+    }
 
     return {
       id: member.id,
@@ -129,6 +159,30 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
+    // Check if connection already exists
+    const existingConnection = await prisma.connection.findFirst({
+      where: {
+        OR: [
+          {
+            AND: [
+              { senderId: user.id, receiverId },
+              { status: { not: "rejected" } }
+            ]
+          },
+          {
+            AND: [
+              { senderId: receiverId, receiverId: user.id },
+              { status: { not: "rejected" } }
+            ]
+          }
+        ],
+      },
+    });
+
+    if (existingConnection) {
+      return json({ error: "Connection request already exists" }, { status: 400 });
+    }
+
     // Create connection request
     const connection = await prisma.connection.create({
       data: {
@@ -138,7 +192,7 @@ export async function action({ request }: ActionFunctionArgs) {
     });
 
     // Create notification for receiver
-    await prisma.notification.create({
+    const notification = await prisma.notification.create({
       data: {
         userId: receiverId,
         type: "connection_request",
@@ -147,17 +201,29 @@ export async function action({ request }: ActionFunctionArgs) {
       },
     });
 
+    // Emit real-time notification
+    emitNotification({
+      type: "connection_request",
+      userId: receiverId,
+      data: {
+        id: notification.id,
+        message: notification.message,
+        metadata: notification.metadata as { connectionId?: string },
+      },
+    });
+
     return json({ success: true });
   } catch (error) {
-    console.error("Failed to create connection:", error);
+    console.error("[Members Action] Failed to create connection:", error);
     return json({ error: "Failed to create connection" }, { status: 500 });
   }
 }
 
 export default function Members() {
-  const { user, members, connections } = useLoaderData<typeof loader>();
+  const { members, connections } = useLoaderData<typeof loader>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const fetcher = useFetcher();
+  const fetcher = useFetcher<ActionData>();
+  const { toast } = useToast();
 
   const handleSearch = (event: React.ChangeEvent<HTMLInputElement>) => {
     const search = event.target.value;
@@ -167,6 +233,17 @@ export default function Members() {
       setSearchParams({});
     }
   };
+
+  // Show error message if connection request fails
+  useEffect(() => {
+    if (fetcher.data?.error) {
+      toast({
+        title: "Error",
+        description: fetcher.data.error,
+        variant: "destructive",
+      });
+    }
+  }, [fetcher.data, toast]);
 
   return (
     <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-8 mt-16">
@@ -213,32 +290,28 @@ export default function Members() {
                       )}
                     </div>
                   </Link>
-                  <fetcher.Form method="post">
-                    <input type="hidden" name="receiverId" value={member.id} />
-                    <button
-                      type="submit"
-                      disabled={
-                        fetcher.state !== "idle" ||
-                        member.connectionStatus === "pending" ||
-                        member.connectionStatus === "accepted"
-                      }
-                      className={`px-4 py-2 rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-                        member.connectionStatus === "accepted"
-                          ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
-                          : member.connectionStatus === "pending"
-                          ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
-                          : "bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500"
-                      }`}
-                    >
-                      {member.connectionStatus === "accepted"
-                        ? "Connected"
-                        : member.connectionStatus === "pending"
-                        ? "Pending"
-                        : fetcher.state !== "idle"
-                        ? "Connecting..."
-                        : "Connect"}
-                    </button>
-                  </fetcher.Form>
+                  {member.connectionStatus === null && (
+                    <fetcher.Form method="post">
+                      <input type="hidden" name="receiverId" value={member.id} />
+                      <button
+                        type="submit"
+                        disabled={fetcher.state !== "idle"}
+                        className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                      >
+                        Connect
+                      </button>
+                    </fetcher.Form>
+                  )}
+                  {member.connectionStatus === "pending" && (
+                    <span className="text-gray-500 dark:text-gray-400">
+                      Request Pending
+                    </span>
+                  )}
+                  {member.connectionStatus === "accepted" && (
+                    <span className="text-green-500 dark:text-green-400">
+                      Connected
+                    </span>
+                  )}
                 </div>
               </div>
             ))}
@@ -247,9 +320,12 @@ export default function Members() {
 
         {/* Right Sidebar */}
         <aside className="lg:col-span-3">
-          <SidebarConnections user={user} connections={connections} />
+          <div className="sticky top-24">
+            <SidebarConnections connections={connections} />
+          </div>
         </aside>
       </div>
+      <Toaster />
     </div>
   );
 }
