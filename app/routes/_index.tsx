@@ -9,6 +9,8 @@ import { authenticator } from "~/utils/auth.server";
 import type { User } from "~/utils/auth.server";
 import { PostCategory } from "~/types/post";
 
+const POSTS_PER_PAGE = 15;
+
 interface LoaderData {
   user: User | null;
   error: string | null;
@@ -35,12 +37,21 @@ interface LoaderData {
     avatar: string | null;
     organization: string | null;
   }>;
+  hasMore: boolean;
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const user = await authenticator.isAuthenticated(request);
   const searchParams = new URL(request.url).searchParams;
   const categoryParam = searchParams.get("category");
+  const cursor = searchParams.get("cursor");
+
+  // If it's a paginated request (has cursor), we can cache it longer
+  const headers = new Headers({
+    "Cache-Control": cursor
+      ? "private, max-age=60, stale-while-revalidate=300" // Cache paginated requests for 1 minute, allow stale for 5 minutes
+      : "private, max-age=15, stale-while-revalidate=60"  // Cache initial feed for 15 seconds, allow stale for 1 minute
+  });
 
   let categoryFilter = {};
   if (categoryParam) {
@@ -52,12 +63,37 @@ export async function loader({ request }: LoaderFunctionArgs) {
     };
   }
 
+  // Add cursor-based pagination
+  let cursorFilter = {};
+  if (cursor) {
+    const post = await prisma.post.findUnique({
+      where: { id: cursor },
+      select: { createdAt: true }
+    });
+    if (post) {
+      cursorFilter = {
+        createdAt: {
+          lt: post.createdAt
+        }
+      };
+    }
+  }
+
   const [posts, connections] = await Promise.all([
     prisma.post.findMany({
-      where: categoryFilter,
+      where: {
+        ...categoryFilter,
+        ...cursorFilter,
+        user: {
+          name: {
+            not: null
+          }
+        }
+      },
       orderBy: {
         createdAt: "desc",
       },
+      take: POSTS_PER_PAGE + 1,
       include: {
         user: {
           select: {
@@ -78,7 +114,24 @@ export async function loader({ request }: LoaderFunctionArgs) {
           },
         },
       },
-    }),
+    }) as unknown as Array<{
+      id: string;
+      content: string;
+      category: string;
+      imageUrl: string | null;
+      createdAt: Date;
+      upvoteCount: number;
+      user: {
+        id: string;
+        name: string;
+        avatar: string | null;
+        organization: string | null;
+      };
+      upvotes: Array<{ id: string }>;
+      _count: {
+        comments: number;
+      };
+    }>,
     user
       ? prisma.user.findMany({
           where: {
@@ -100,6 +153,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
                 },
               },
             ],
+            name: {
+              not: null
+            }
           },
           select: {
             id: true,
@@ -107,31 +163,46 @@ export async function loader({ request }: LoaderFunctionArgs) {
             avatar: true,
             organization: true,
           },
-        })
+        }) as Promise<Array<{
+          id: string;
+          name: string;
+          avatar: string | null;
+          organization: string | null;
+        }>>
       : Promise.resolve([]),
   ]);
 
-  return json<LoaderData>({
-    user,
-    error: null,
-    posts: posts.map((post) => ({
-      id: post.id,
-      content: post.content,
-      category: post.category as PostCategory,
-      imageUrl: post.imageUrl,
-      timestamp: post.createdAt.toISOString(),
-      upvotes: post.upvoteCount,
-      comments: post._count.comments,
-      shares: 0,
-      isUpvoted: post.upvotes?.length > 0,
-      author: post.user,
-    })),
-    connections,
-  });
+  // Check if there are more posts
+  const hasMore = posts.length > POSTS_PER_PAGE;
+  const postsToReturn = hasMore ? posts.slice(0, -1) : posts;
+
+  return json<LoaderData>(
+    {
+      user,
+      error: null,
+      posts: postsToReturn.map((post) => ({
+        id: post.id,
+        content: post.content,
+        category: post.category as PostCategory,
+        imageUrl: post.imageUrl,
+        timestamp: post.createdAt.toISOString(),
+        upvotes: post.upvoteCount,
+        comments: post._count.comments,
+        shares: 0,
+        isUpvoted: post.upvotes?.length > 0,
+        author: post.user,
+      })),
+      connections,
+      hasMore,
+    },
+    {
+      headers
+    }
+  );
 }
 
 export default function Index() {
-  const { user, posts, connections } = useLoaderData<LoaderData>();
+  const { user, posts, connections, hasMore } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
@@ -157,10 +228,10 @@ export default function Index() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-8 mt-16">
+      <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-12 mt-[90px]">
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
           <aside className="lg:col-span-3">
-            <div className="sticky top-24">
+            <div className="sticky top-[140px]">
               <SidebarNav
                 selectedCategory={selectedCategory}
                 onCategorySelect={handleCategorySelect}
@@ -173,10 +244,11 @@ export default function Index() {
               posts={posts}
               currentUser={user}
               selectedCategory={selectedCategory}
+              hasMore={hasMore}
             />
           </main>
           <aside className="lg:col-span-3">
-            <div className="sticky top-24">
+            <div className="sticky top-[140px]">
               <SidebarConnections connections={connections} />
             </div>
           </aside>

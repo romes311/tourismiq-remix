@@ -146,7 +146,7 @@ export default function Notifications() {
   const fetcher = useFetcher();
 
   return (
-    <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-8 mt-16">
+    <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-12 mt-[90px]">
       <div className="max-w-3xl mx-auto">
         <h1 className="text-3xl font-bold mb-8">Notifications</h1>
 
@@ -226,7 +226,7 @@ export default function Notifications() {
               </div>
             ))}
             {notifications.length === 0 && (
-              <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+              <p className="text-gray-500 dark:text-gray-400 text-center py-12">
                 No notifications yet
               </p>
             )}

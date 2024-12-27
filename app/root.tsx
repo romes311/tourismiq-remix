@@ -23,7 +23,9 @@ function getThemeScript() {
       let theme = window.localStorage.getItem('theme');
       if (!theme) {
         theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        window.localStorage.setItem('theme', theme);
       }
+      document.documentElement.classList.remove('light', 'dark');
       document.documentElement.classList.add(theme);
     })();
   `;
@@ -67,8 +69,8 @@ export function ErrorBoundary() {
       </head>
       <body className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <div className="flex min-h-screen flex-col items-center justify-center p-4 text-center">
-          <h1 className="text-4xl font-bold">There was an error</h1>
-          <p className="mt-4">Please try again later</p>
+          <img src="/logo.svg" alt="TourismIQ Logo" className="h-16 w-auto mb-8" />
+          <p className="mt-4 text-lg text-gray-600 dark:text-gray-300">Please try again later</p>
         </div>
         <ScrollRestoration />
         <Scripts />
@@ -81,7 +83,7 @@ export default function App() {
   const { user, error } = useLoaderData<LoaderData>();
 
   return (
-    <html lang="en" className="h-full">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />

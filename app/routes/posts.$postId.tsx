@@ -159,11 +159,11 @@ export default function PostPage() {
   };
 
   return (
-    <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-8 mt-16">
+    <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-12 mt-[90px]">
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
         {/* Left Sidebar */}
         <aside className="lg:col-span-3">
-          <div className="sticky top-24 w-full max-w-[260px]">
+          <div className="sticky top-[140px] w-full max-w-[260px]">
             <SidebarNav
               selectedCategory={post.category}
               onCategorySelect={handleCategorySelect}

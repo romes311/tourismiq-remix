@@ -50,7 +50,7 @@ export function UserComments({ user }: UserCommentsProps) {
 
   if (comments.length === 0) {
     return (
-      <div className="text-center py-12">
+      <div className="text-center py-8">
         <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gray-100 dark:bg-gray-800 mb-6">
           <svg
             className="h-10 w-10 text-gray-500 dark:text-gray-400"
