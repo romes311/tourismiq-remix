@@ -1,10 +1,11 @@
-import { Form, Link } from "@remix-run/react";
+import { Link, Form } from "@remix-run/react";
 import { useState, useRef, useEffect } from "react";
 import type { User } from "~/utils/auth.server";
 import { NotificationBell } from "./NotificationBell";
+import { ThemeToggle } from "./ThemeToggle";
 
 interface HeaderProps {
-  user?: User | null;
+  user: User | null;
 }
 
 export function Header({ user }: HeaderProps) {
@@ -44,6 +45,7 @@ export function Header({ user }: HeaderProps) {
             {user ? (
               <>
                 <NotificationBell user={user} />
+                <ThemeToggle />
                 <div className="relative">
                   <button
                     ref={buttonRef}
@@ -97,16 +99,15 @@ export function Header({ user }: HeaderProps) {
                 </div>
               </>
             ) : (
-              <div className="flex items-center gap-4">
-                <Form action="/auth/google" method="get">
-                  <button
-                    type="submit"
-                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                  >
-                    Sign in
-                  </button>
-                </Form>
-              </div>
+              <>
+                <ThemeToggle />
+                <Link
+                  to="/login"
+                  className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-blue-600 text-white shadow hover:bg-blue-500 h-9 px-4 py-2"
+                >
+                  Sign in
+                </Link>
+              </>
             )}
           </div>
         </div>

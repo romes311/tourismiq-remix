@@ -1,31 +1,33 @@
 import { json, type LoaderFunctionArgs } from "@remix-run/node";
-import { useLoaderData, useNavigate, useFetcher, useLocation } from "@remix-run/react";
+import { useLoaderData, useLocation, useNavigate } from "@remix-run/react";
 import { SidebarNav } from "~/components/SidebarNav";
 import { SidebarConnections } from "~/components/SidebarConnections";
-import { Feed } from "~/components/Feed";
 import { CreatePostForm } from "~/components/CreatePostForm";
-import { PostCategory } from "~/types/post";
-import type { User } from "~/utils/auth.server";
+import { Feed } from "~/components/Feed";
 import { prisma } from "~/utils/db.server";
 import { authenticator } from "~/utils/auth.server";
+import type { User } from "~/utils/auth.server";
+import { PostCategory } from "~/types/post";
 
 interface LoaderData {
   user: User | null;
+  error: string | null;
   posts: Array<{
     id: string;
     content: string;
     category: PostCategory;
     imageUrl: string | null;
-    createdAt: string;
-    user: {
+    timestamp: string;
+    upvotes: number;
+    comments: number;
+    shares: number;
+    isUpvoted: boolean;
+    author: {
       id: string;
       name: string;
       avatar: string | null;
       organization: string | null;
     };
-    upvotes: number;
-    comments: number;
-    isUpvoted: boolean;
   }>;
   connections: Array<{
     id: string;
@@ -36,133 +38,111 @@ interface LoaderData {
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const sessionUser = await authenticator.isAuthenticated(request);
-  const url = new URL(request.url);
-  const categoryParam = url.searchParams.get("category");
+  const user = await authenticator.isAuthenticated(request);
+  const searchParams = new URL(request.url).searchParams;
+  const categoryParam = searchParams.get("category");
 
-  // Get fresh user data from the database
-  const user = sessionUser ? await prisma.user.findUnique({
-    where: { id: sessionUser.id },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      avatar: true,
-      organization: true,
-      jobTitle: true,
-      linkedIn: true,
-      location: true,
-    },
-  }) : null;
-
-  // Parse category parameter
-  const categories = categoryParam
-    ? categoryParam.includes(",")
-      ? categoryParam.split(",") as PostCategory[]
-      : [categoryParam as PostCategory]
-    : null;
-
-  // Get basic post data first
-  const posts = await prisma.post.findMany({
-    where: categories ? {
+  let categoryFilter = {};
+  if (categoryParam) {
+    const categories = categoryParam.split(",");
+    categoryFilter = {
       category: {
-        in: categories
-      }
-    } : undefined,
-    orderBy: {
-      createdAt: 'desc'
-    },
-    include: {
-      user: {
-        select: {
-          id: true,
-          name: true,
-          avatar: true,
-          organization: true,
-        }
+        in: categories,
       },
-      _count: {
-        select: {
-          upvotes: true,
-          comments: true
-        }
-      }
-    }
-  });
+    };
+  }
 
-  // Get upvote status if user is logged in
-  const postsWithUpvotes = await Promise.all(
-    posts.map(async (post) => {
-      const isUpvoted = user ? await prisma.upvote.findUnique({
-        where: {
-          postId_userId: {
-            postId: post.id,
-            userId: user.id
-          }
-        }
-      }) : null;
-
-      return {
-        id: post.id,
-        content: post.content,
-        category: post.category,
-        imageUrl: post.imageUrl,
-        createdAt: post.createdAt.toISOString(),
-        user: post.user,
-        upvotes: post._count.upvotes,
-        comments: post._count.comments,
-        isUpvoted: !!isUpvoted
-      };
-    })
-  );
-
-  // Get user connections if logged in
-  const connections = user ? await prisma.user.findMany({
-    where: {
-      OR: [
-        {
-          receivedConnections: {
-            some: {
-              senderId: user.id,
-              status: "pending"
-            }
-          }
+  const [posts, connections] = await Promise.all([
+    prisma.post.findMany({
+      where: categoryFilter,
+      orderBy: {
+        createdAt: "desc",
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            avatar: true,
+            organization: true,
+          },
         },
-        {
-          sentConnections: {
-            some: {
-              receiverId: user.id,
-              status: "pending"
-            }
-          }
-        }
-      ]
-    },
-    select: {
-      id: true,
-      name: true,
-      organization: true,
-      avatar: true
-    }
-  }) : [];
+        upvotes: user ? {
+          where: {
+            userId: user.id,
+          },
+        } : false,
+        _count: {
+          select: {
+            comments: true,
+          },
+        },
+      },
+    }),
+    user
+      ? prisma.user.findMany({
+          where: {
+            OR: [
+              {
+                receivedConnections: {
+                  some: {
+                    senderId: user.id,
+                    status: "accepted",
+                  },
+                },
+              },
+              {
+                sentConnections: {
+                  some: {
+                    receiverId: user.id,
+                    status: "accepted",
+                  },
+                },
+              },
+            ],
+          },
+          select: {
+            id: true,
+            name: true,
+            avatar: true,
+            organization: true,
+          },
+        })
+      : Promise.resolve([]),
+  ]);
 
-  return json({ user, posts: postsWithUpvotes, connections });
+  return json<LoaderData>({
+    user,
+    error: null,
+    posts: posts.map((post) => ({
+      id: post.id,
+      content: post.content,
+      category: post.category as PostCategory,
+      imageUrl: post.imageUrl,
+      timestamp: post.createdAt.toISOString(),
+      upvotes: post.upvoteCount,
+      comments: post._count.comments,
+      shares: 0,
+      isUpvoted: post.upvotes?.length > 0,
+      author: post.user,
+    })),
+    connections,
+  });
 }
 
 export default function Index() {
   const { user, posts, connections } = useLoaderData<LoaderData>();
   const navigate = useNavigate();
-  const fetcher = useFetcher();
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const categoryParam = searchParams.get("category");
 
   // Parse category parameter
-  const selectedCategory = categoryParam
-    ? categoryParam.includes(",")
-      ? categoryParam.split(",") as PostCategory[]
-      : categoryParam as PostCategory
-    : null;
+  let selectedCategory: PostCategory | PostCategory[] | null = null;
+  if (categoryParam) {
+    const categories = categoryParam.split(",") as PostCategory[];
+    selectedCategory = categories.length === 1 ? categories[0] : categories;
+  }
 
   const handleCategorySelect = (category: PostCategory | PostCategory[] | null) => {
     if (category) {
@@ -175,27 +155,8 @@ export default function Index() {
     }
   };
 
-  // Transform posts data to match Feed component props
-  const feedPosts = posts.map(post => ({
-    id: post.id,
-    content: post.content,
-    category: post.category,
-    imageUrl: post.imageUrl,
-    timestamp: post.createdAt,
-    author: {
-      id: post.user.id,
-      name: post.user.name,
-      organization: post.user.organization,
-      avatar: post.user.avatar,
-    },
-    upvotes: post.upvotes,
-    comments: post.comments,
-    shares: 0, // Add default value if not in data
-    isUpvoted: post.isUpvoted,
-  }));
-
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-8 mt-16">
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
           <aside className="lg:col-span-3">
@@ -207,9 +168,9 @@ export default function Index() {
             </div>
           </aside>
           <main className="lg:col-span-6 space-y-6">
-            {user && <CreatePostForm user={user} fetcher={fetcher} />}
+            {user && <CreatePostForm user={user} />}
             <Feed
-              posts={feedPosts}
+              posts={posts}
               currentUser={user}
               selectedCategory={selectedCategory}
             />

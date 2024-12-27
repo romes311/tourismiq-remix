@@ -120,26 +120,26 @@ function CommentList({ comments }: { comments: Comment[] }) {
             referrerPolicy="no-referrer"
           />
           <div className="flex-1">
-            <div className="bg-gray-50 rounded-lg px-4 py-2">
+            <div className="bg-gray-50 dark:bg-gray-900 rounded-lg px-4 py-2">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="font-medium text-gray-900">
+                  <span className="font-medium text-gray-900 dark:text-white">
                     {comment.user.name}
                   </span>
                   {comment.user.organization && (
-                    <span className="ml-2 text-sm text-gray-500">
+                    <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">
                       {comment.user.organization}
                     </span>
                   )}
                 </div>
-                <span className="text-sm text-gray-500">
+                <span className="text-sm text-gray-500 dark:text-gray-400">
                   {new Date(comment.createdAt).toLocaleDateString("en-US", {
                     month: "short",
                     day: "numeric",
                   })}
                 </span>
               </div>
-              <p className="mt-1 text-gray-900">
+              <p className="mt-1 text-gray-900 dark:text-white">
                 {comment.content}
               </p>
             </div>
@@ -155,7 +155,6 @@ function ImageWithLoading({ src, alt }: { src: string; alt: string }) {
   const [hasError, setHasError] = useState(false);
   const [isFirstLoad, setIsFirstLoad] = useState(true);
 
-  // Load image immediately
   useEffect(() => {
     const img = new Image();
     img.src = src;
@@ -170,11 +169,11 @@ function ImageWithLoading({ src, alt }: { src: string; alt: string }) {
   }, [src]);
 
   return (
-    <div className="relative w-full aspect-[3/2] rounded-lg overflow-hidden bg-gray-100">
+    <div className="relative w-full aspect-[3/2] rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800">
       {/* Loading shimmer - only show during first load */}
       {isFirstLoad && (
         <div className="absolute inset-0">
-          <div className="animate-pulse w-full h-full bg-gray-200">
+          <div className="animate-pulse w-full h-full bg-gray-200 dark:bg-gray-700">
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
           </div>
         </div>
@@ -182,8 +181,8 @@ function ImageWithLoading({ src, alt }: { src: string; alt: string }) {
 
       {/* Error state */}
       {hasError && !isFirstLoad && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-          <div className="text-gray-400 text-sm">Failed to load image</div>
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-100 dark:bg-gray-800">
+          <div className="text-gray-400 dark:text-gray-500 text-sm">Failed to load image</div>
         </div>
       )}
 
@@ -311,7 +310,7 @@ export function Post({
   };
 
   return (
-    <article className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+    <article className="bg-white dark:bg-gray-900 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800">
       {/* Author Info */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-3">
@@ -330,11 +329,11 @@ export function Post({
           <div>
             <Link
               to={`/profile/${author.id}`}
-              className="font-medium text-gray-900 hover:text-blue-600"
+              className="font-medium text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400"
             >
               {author.name}
             </Link>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
               {author.organization}
               {timestamp && (
                 <>
@@ -350,7 +349,7 @@ export function Post({
           </div>
         </div>
         <div className="flex items-center">
-          <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
+          <span className="inline-flex items-center rounded-full bg-blue-50 dark:bg-blue-900/50 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-300 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-700/30">
             {category}
           </span>
         </div>
@@ -358,22 +357,22 @@ export function Post({
 
       {/* Content */}
       <div className="space-y-4">
-        <p className="text-gray-900 whitespace-pre-wrap">
+        <p className="text-gray-900 dark:text-white whitespace-pre-wrap">
           {content}
         </p>
         {imageUrl && <ImageWithLoading src={imageUrl} alt="Post attachment" />}
       </div>
 
       {/* Actions */}
-      <div className="mt-4 flex items-center justify-between border-t border-gray-200 pt-4">
+      <div className="mt-4 flex items-center justify-between border-t border-gray-200 dark:border-gray-800 pt-4">
         <div className="flex items-center space-x-4">
           <button
             onClick={handleUpvote}
             disabled={!currentUser || isUpvotedState}
             className={`flex items-center space-x-1.5 ${
               isUpvotedState
-                ? "text-blue-600"
-                : "text-gray-500"
+                ? "text-blue-600 dark:text-blue-400"
+                : "text-gray-500 dark:text-gray-400"
             } disabled:opacity-50 disabled:cursor-not-allowed`}
             title={!currentUser ? "Sign in to upvote" : isUpvotedState ? "Already upvoted" : "Upvote this post"}
           >
@@ -396,8 +395,8 @@ export function Post({
             onClick={handleToggleComments}
             className={`flex items-center space-x-1.5 ${
               showComments
-                ? "text-blue-600"
-                : "text-gray-500"
+                ? "text-blue-600 dark:text-blue-400"
+                : "text-gray-500 dark:text-gray-400"
             }`}
           >
             <svg
@@ -415,7 +414,7 @@ export function Post({
             </svg>
             <span>{localCommentCount}</span>
           </button>
-          <button className="flex items-center space-x-1.5 text-gray-500">
+          <button className="flex items-center space-x-1.5 text-gray-500 dark:text-gray-400">
             <svg
               className="h-5 w-5"
               fill="none"
@@ -433,7 +432,7 @@ export function Post({
           </button>
           <Link
             to={`/posts/${id}`}
-            className="flex items-center space-x-1.5 text-gray-500 hover:text-blue-600"
+            className="flex items-center space-x-1.5 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
           >
             <svg
               className="h-5 w-5"
@@ -457,7 +456,7 @@ export function Post({
             <span>View Post</span>
           </Link>
         </div>
-        <button className="text-gray-500">
+        <button className="text-gray-500 dark:text-gray-400">
           <svg
             className="h-5 w-5"
             fill="none"
@@ -476,7 +475,7 @@ export function Post({
 
       {/* Comments Section */}
       {showComments && (
-        <div className="mt-4 border-t border-gray-200 pt-4">
+        <div className="mt-4 border-t border-gray-200 dark:border-gray-800 pt-4">
           {isLoadingComments ? (
             <div className="flex justify-center py-4">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
@@ -490,7 +489,7 @@ export function Post({
               />
               <CommentList comments={comments} />
               {comments.length === 0 && (
-                <p className="text-center text-gray-500 py-4">
+                <p className="text-center text-gray-500 dark:text-gray-400 py-4">
                   No comments yet. Be the first to comment!
                 </p>
               )}

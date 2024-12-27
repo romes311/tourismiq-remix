@@ -1,5 +1,4 @@
-import { useNavigation, type FetcherWithComponents } from "@remix-run/react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import type { User } from "~/utils/auth.server";
 import { PostCategory } from "~/types/post";
 
@@ -29,7 +28,7 @@ function PostTrigger({ user, onClick }: PostTriggerProps) {
   return (
     <button
       onClick={onClick}
-      className="w-full bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6 text-left hover:bg-gray-50"
+      className="w-full bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800 p-4 mb-6 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50"
     >
       <div className="flex items-center gap-3">
         <img
@@ -38,7 +37,7 @@ function PostTrigger({ user, onClick }: PostTriggerProps) {
           className="h-10 w-10 rounded-full"
           crossOrigin="anonymous"
         />
-        <span className="text-gray-500">
+        <span className="text-gray-500 dark:text-gray-400">
           Start a post...
         </span>
       </div>
@@ -49,9 +48,8 @@ function PostTrigger({ user, onClick }: PostTriggerProps) {
 interface CreatePostModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: () => void;
+  onSubmit: (data: FormData) => Promise<void>;
   user: User;
-  fetcher: FetcherWithComponents<unknown>;
 }
 
 function CreatePostModal({
@@ -59,122 +57,92 @@ function CreatePostModal({
   onClose,
   onSubmit,
   user,
-  fetcher,
 }: CreatePostModalProps) {
-  const navigation = useNavigation();
-  const isSubmitting =
-    navigation.state === "submitting" || fetcher.state === "submitting";
-  const formRef = useRef<HTMLFormElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedCategory, setSelectedCategory] = useState<PostCategory | "">(
-    ""
-  );
   const [step, setStep] = useState<"category" | "content">("category");
+  const [selectedCategory, setSelectedCategory] = useState<PostCategory | null>(null);
+  const [content, setContent] = useState("");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
 
-  const isUploading =
-    fetcher.state === "submitting" && fetcher.formData?.get("image");
-
-  // Handle escape key
-  useEffect(() => {
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setIsUploading(true);
+      try {
+        const formData = new FormData();
+        formData.append("image", file);
+        const response = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setSelectedImage(data.url);
+        }
+      } catch (error) {
+        console.error("Failed to upload image:", error);
+      } finally {
+        setIsUploading(false);
       }
-    };
-
-    if (isOpen) {
-      document.addEventListener("keydown", handleEscape);
-      return () => document.removeEventListener("keydown", handleEscape);
     }
-  }, [isOpen, onClose]);
+  };
+
+  const handleSubmit = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    if (!selectedCategory || !content.trim() || isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      const formData = new FormData();
+      formData.append("category", selectedCategory);
+      formData.append("content", content);
+      if (selectedImage) {
+        formData.append("imageUrl", selectedImage);
+      }
+      await onSubmit(formData);
+      onClose();
+    } catch (error) {
+      console.error("Failed to create post:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleClose = () => {
-    onClose();
-    setSelectedCategory("");
     setStep("category");
+    setSelectedCategory(null);
+    setContent("");
     setSelectedImage(null);
-  };
-
-  const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      // Check file type
-      if (!file.type.startsWith("image/")) {
-        alert("Please select an image file");
-        return;
-      }
-      // Check file size (5MB limit)
-      if (file.size > 5 * 1024 * 1024) {
-        alert("Image size should be less than 5MB");
-        return;
-      }
-
-      const url = URL.createObjectURL(file);
-      setSelectedImage(url);
-    }
-  };
-
-  const handleRemoveImage = () => {
-    setSelectedImage(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  };
-
-  // Cleanup object URLs when component unmounts or modal closes
-  useEffect(() => {
-    return () => {
-      if (selectedImage) {
-        URL.revokeObjectURL(selectedImage);
-      }
-    };
-  }, [selectedImage]);
-
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const formData = new FormData(form);
-
-    // If there's a selected image but no file input (because we're using a preview),
-    // we need to get the file from the file input ref
-    if (
-      selectedImage &&
-      !formData.get("image") &&
-      fileInputRef.current?.files?.[0]
-    ) {
-      formData.set("image", fileInputRef.current.files[0]);
-    }
-
-    fetcher.submit(formData, {
-      method: "post",
-      action: "/?index",
-      encType: "multipart/form-data",
-    });
-    onSubmit();
+    onClose();
   };
 
   if (!isOpen) return null;
 
   return (
     <div
-      className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      ref={modalRef}
+      className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
+      tabIndex={-1}
     >
       <div
-        className="bg-white w-full max-w-2xl rounded-xl shadow-2xl"
+        className="bg-white dark:bg-gray-900 w-full max-w-2xl rounded-xl shadow-2xl"
         role="document"
       >
         {/* Modal header */}
-        <div className="border-b border-gray-200 p-4 flex justify-between items-center">
-          <h2 id="modal-title" className="text-xl font-semibold text-gray-900">
+        <div className="border-b border-gray-200 dark:border-gray-800 p-4 flex justify-between items-center">
+          <h2 id="modal-title" className="text-xl font-semibold text-gray-900 dark:text-white">
             {step === "category" ? "Choose a category" : "Create a post"}
           </h2>
           <button
             onClick={handleClose}
-            className="text-gray-500 hover:text-gray-700 transition-colors p-1 hover:bg-gray-100 rounded-full"
+            className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full"
             aria-label="Close modal"
           >
             <svg
@@ -209,15 +177,15 @@ function CreatePostModal({
                       setSelectedCategory(category.value);
                       setStep("content");
                     }}
-                    className={`p-3 rounded-lg border text-left hover:border-blue-500 hover:bg-blue-50/50 transition-colors ${
+                    className={`p-3 rounded-lg border text-left hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-900/20 transition-colors ${
                       selectedCategory === category.value
-                        ? "border-blue-500 bg-blue-50/50"
-                        : "border-gray-200 hover:shadow-sm"
+                        ? "border-blue-500 bg-blue-50/50 dark:bg-blue-900/20"
+                        : "border-gray-200 dark:border-gray-700 hover:shadow-sm"
                     }`}
                     role="radio"
                     aria-checked={selectedCategory === category.value}
                   >
-                    <h3 className="font-medium text-gray-900">
+                    <h3 className="font-medium text-gray-900 dark:text-white">
                       {category.label}
                     </h3>
                   </button>
@@ -225,132 +193,126 @@ function CreatePostModal({
               </div>
             </>
           ) : (
-            <fetcher.Form
-              ref={formRef}
-              method="post"
-              action="/?index"
-              className="space-y-4"
-              onSubmit={handleSubmit}
-              encType="multipart/form-data"
-              aria-label="Create post form"
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <img
-                  src={
-                    user.avatar ||
-                    `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name}`
-                  }
-                  alt=""
-                  aria-hidden="true"
-                  className="h-12 w-12 rounded-full"
-                />
-                <div>
-                  <div className="font-medium text-gray-900">{user.name}</div>
-                  {user.organization && (
-                    <div className="text-sm text-gray-500">
-                      {user.organization}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <input type="hidden" name="category" value={selectedCategory} />
-              <div>
-                <label htmlFor="content" className="sr-only">
-                  Post content
-                </label>
-                <textarea
-                  name="content"
-                  rows={4}
-                  className="block w-full rounded-lg border-0 px-3 py-2 text-gray-900 bg-white shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
-                  placeholder="What would you like to share?"
-                  required
-                  aria-label="Post content"
-                />
-              </div>
-
-              {/* Image Preview */}
-              {selectedImage && (
-                <div className="relative">
+            <>
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
                   <img
-                    src={selectedImage}
-                    alt="Preview"
-                    className={`max-h-[300px] w-full object-contain rounded-lg ${
-                      isUploading ? "opacity-50" : ""
-                    }`}
+                    src={
+                      user.avatar ||
+                      `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name}`
+                    }
+                    alt={user.name}
+                    className="h-10 w-10 rounded-full"
+                    crossOrigin="anonymous"
                   />
-                  {isUploading ? (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="bg-white/90 rounded-lg p-4 shadow-lg">
-                        <div className="flex items-center space-x-3">
-                          <svg
-                            className="animate-spin h-5 w-5 text-blue-500"
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                          >
-                            <circle
-                              className="opacity-25"
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              stroke="currentColor"
-                              strokeWidth="4"
-                            />
-                            <path
-                              className="opacity-75"
-                              fill="currentColor"
-                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                            />
-                          </svg>
-                          <span className="text-sm font-medium text-gray-900">
-                            Preparing image...
-                          </span>
+                  <div>
+                    <div className="font-medium text-gray-900 dark:text-white">
+                      {user.name}
+                    </div>
+                    {user.organization && (
+                      <div className="text-sm text-gray-500 dark:text-gray-400">
+                        {user.organization}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <textarea
+                  ref={textareaRef}
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  placeholder="What would you like to share?"
+                  className="w-full min-h-[150px] p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                  disabled={isSubmitting}
+                />
+
+                {/* Image Preview */}
+                {selectedImage && (
+                  <div className="relative">
+                    <img
+                      src={selectedImage}
+                      alt="Preview"
+                      className={`max-h-[300px] w-full object-contain rounded-lg ${
+                        isUploading ? "opacity-50" : ""
+                      }`}
+                    />
+                    {isUploading ? (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="bg-white/90 dark:bg-gray-900/90 rounded-lg p-4 shadow-lg">
+                          <div className="flex items-center space-x-3">
+                            <svg
+                              className="animate-spin h-5 w-5 text-blue-500"
+                              xmlns="http://www.w3.org/2000/svg"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              />
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                              />
+                            </svg>
+                            <span className="text-sm font-medium text-gray-900 dark:text-white">
+                              Preparing image...
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={handleRemoveImage}
-                      className="absolute top-2 right-2 p-1 bg-black/50 hover:bg-black/70 text-white rounded-full"
-                      aria-label="Remove image"
-                    >
-                      <svg
-                        className="h-5 w-5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setSelectedImage(null);
+                          if (fileInputRef.current) {
+                            fileInputRef.current.value = "";
+                          }
+                        }}
+                        className="absolute top-2 right-2 p-1 bg-white/90 dark:bg-gray-900/90 rounded-full shadow-lg hover:bg-gray-100 dark:hover:bg-gray-800"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-              )}
+                        <svg
+                          className="h-5 w-5 text-gray-500 dark:text-gray-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                )}
 
-              <input
-                ref={fileInputRef}
-                type="file"
-                name="image"
-                accept="image/*"
-                className="hidden"
-                onChange={handleImageSelect}
-                aria-label="Upload image"
-              />
+                {/* Hidden file input */}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  disabled={isSubmitting}
+                />
+              </div>
 
-              <div className="flex justify-between items-center pt-3 border-t border-gray-200">
+              {/* Action buttons */}
+              <div className="flex items-center justify-between mt-4">
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setStep("category")}
                     disabled={isSubmitting}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-full hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-full hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     aria-label="Back to category selection"
                   >
                     Back
@@ -359,7 +321,7 @@ function CreatePostModal({
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isSubmitting}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-full hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-full hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     aria-label="Add image"
                   >
                     <svg
@@ -378,21 +340,17 @@ function CreatePostModal({
                     Add image
                   </button>
                 </div>
+
                 <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="inline-flex items-center px-6 py-2 border border-transparent text-sm font-medium rounded-full text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-                  aria-busy={isSubmitting}
-                  aria-disabled={isSubmitting}
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={!content.trim() || isSubmitting}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-full hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isUploading
-                    ? "Uploading..."
-                    : isSubmitting
-                    ? "Posting..."
-                    : "Post"}
+                  {isSubmitting ? "Posting..." : "Post"}
                 </button>
               </div>
-            </fetcher.Form>
+            </>
           )}
         </div>
       </div>
@@ -400,30 +358,33 @@ function CreatePostModal({
   );
 }
 
-interface CreatePostFormProps {
-  user: User;
-  fetcher: FetcherWithComponents<unknown>;
-}
+export function CreatePostForm({ user }: { user: User }) {
+  const [isOpen, setIsOpen] = useState(false);
 
-export function CreatePostForm({ user, fetcher }: CreatePostFormProps) {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-
-  const handleSubmit = () => {
-    setTimeout(() => {
-      setIsModalOpen(false);
-    }, 100);
+  const handleSubmit = async (formData: FormData) => {
+    try {
+      const response = await fetch("/api/posts", {
+        method: "POST",
+        body: formData,
+      });
+      if (!response.ok) throw new Error("Failed to create post");
+      setIsOpen(false);
+    } catch (error) {
+      console.error("Error creating post:", error);
+    }
   };
 
   return (
     <>
-      <PostTrigger user={user} onClick={() => setIsModalOpen(true)} />
-      <CreatePostModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSubmit={handleSubmit}
-        user={user}
-        fetcher={fetcher}
-      />
+      <PostTrigger user={user} onClick={() => setIsOpen(true)} />
+      {isOpen && (
+        <CreatePostModal
+          isOpen={isOpen}
+          onClose={() => setIsOpen(false)}
+          onSubmit={handleSubmit}
+          user={user}
+        />
+      )}
     </>
   );
 }
