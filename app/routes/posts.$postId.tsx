@@ -191,7 +191,7 @@ export default function PostPage() {
 
         {/* Right Sidebar */}
         <aside className="lg:col-span-3">
-          <SidebarConnections connections={connections} />
+          <SidebarConnections connections={connections} isLoggedIn={!!currentUser} />
         </aside>
       </div>
     </div>

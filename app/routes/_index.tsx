@@ -249,7 +249,7 @@ export default function Index() {
           </main>
           <aside className="lg:col-span-3">
             <div className="sticky top-[140px]">
-              <SidebarConnections connections={connections} />
+              <SidebarConnections connections={connections} isLoggedIn={!!user} />
             </div>
           </aside>
         </div>

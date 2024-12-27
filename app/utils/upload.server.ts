@@ -1,32 +1,46 @@
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
-import { v4 as uuidv4 } from "uuid";
+import type { UploadHandler } from "@remix-run/node";
+import { writeFile } from "fs/promises";
 
-const UPLOAD_DIR = "public/uploads";
+// Maximum file size (5MB)
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
-export async function uploadImage(file: Blob): Promise<string> {
-  // Ensure upload directory exists
-  try {
-    await mkdir(UPLOAD_DIR, { recursive: true });
-  } catch (error) {
-    console.error("Error creating upload directory:", error);
-    throw new Error("Failed to create upload directory");
+// Allowed file types
+const ALLOWED_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp"
+];
+
+export async function writeAsyncIterableToFile(asyncIterable: AsyncIterable<Uint8Array>, filePath: string) {
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of asyncIterable) {
+    chunks.push(chunk);
   }
-
-  // Generate unique filename with extension
-  const filename = `${uuidv4()}.png`;
-  const filepath = path.join(UPLOAD_DIR, filename);
-
-  try {
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    await writeFile(filepath, buffer);
-    return `/uploads/${filename}`; // Return the public URL path
-  } catch (error) {
-    console.error("Error saving file:", error);
-    throw new Error("Failed to save file");
-  }
+  await writeFile(filePath, Buffer.concat(chunks));
 }
 
-// Alias for backward compatibility
-export const saveImage = uploadImage;
+export const uploadHandler: UploadHandler = async ({ name, contentType, data, filename }) => {
+  if (name !== "image" || !filename) {
+    return undefined;
+  }
+
+  if (!contentType || !ALLOWED_TYPES.includes(contentType)) {
+    throw new Error(`File type ${contentType} is not allowed`);
+  }
+
+  // Accumulate the file data and check size
+  const chunks = [];
+  let size = 0;
+
+  for await (const chunk of data) {
+    size += chunk.length;
+    if (size > MAX_FILE_SIZE) {
+      throw new Error("File is too large");
+    }
+    chunks.push(chunk);
+  }
+
+  // Create a new file object with the accumulated data
+  return new File(chunks, filename, { type: contentType });
+};

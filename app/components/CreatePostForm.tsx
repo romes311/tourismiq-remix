@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import type { User } from "~/utils/auth.server";
 import { PostCategory } from "~/types/post";
+import { useFetcher } from "@remix-run/react";
 
 const categories: { label: string; value: PostCategory }[] = [
   { label: "Thought Leadership", value: PostCategory.THOUGHT_LEADERSHIP },
@@ -360,15 +361,19 @@ function CreatePostModal({
 
 export function CreatePostForm({ user }: { user: User }) {
   const [isOpen, setIsOpen] = useState(false);
+  const fetcher = useFetcher();
 
   const handleSubmit = async (formData: FormData) => {
     try {
-      const response = await fetch("/api/posts", {
+      await fetcher.submit(formData, {
         method: "POST",
-        body: formData,
+        action: "/api/posts",
+        encType: "multipart/form-data",
       });
-      if (!response.ok) throw new Error("Failed to create post");
       setIsOpen(false);
+
+      // Refresh the feed by revalidating the posts endpoint
+      fetcher.load("/api/posts");
     } catch (error) {
       console.error("Error creating post:", error);
     }
