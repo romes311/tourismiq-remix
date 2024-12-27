@@ -1,5 +1,5 @@
 import { json, type LoaderFunctionArgs } from "@remix-run/node";
-import { useLoaderData , Link } from "@remix-run/react";
+import { useLoaderData, Link, useNavigate } from "@remix-run/react";
 import { authenticator } from "~/utils/auth.server";
 import { prisma } from "~/utils/db.server";
 import { UserAboutTab } from "~/components/UserAboutTab";
@@ -8,6 +8,7 @@ import { UserComments } from "~/components/UserComments";
 import { ProfileImage } from "~/components/ProfileImage";
 import { SidebarNav } from "~/components/SidebarNav";
 import { useState } from "react";
+import type { PostCategory } from "~/types/post";
 
 type Tab = "about" | "posts" | "comments" | "connections";
 
@@ -22,6 +23,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       select: {
         id: true,
         name: true,
+        email: true,
         avatar: true,
         organization: true,
         jobTitle: true,
@@ -90,6 +92,18 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 export default function UserProfile() {
   const { currentUser, user, connections } = useLoaderData<typeof loader>();
   const [activeTab, setActiveTab] = useState<Tab>("about");
+  const navigate = useNavigate();
+
+  const handleCategorySelect = (category: PostCategory | PostCategory[] | null) => {
+    if (category) {
+      const categoryParam = Array.isArray(category)
+        ? category.join(",")
+        : category;
+      navigate(`/?category=${categoryParam}`);
+    } else {
+      navigate("/");
+    }
+  };
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "about", label: "About" },
@@ -105,7 +119,9 @@ export default function UserProfile() {
           {/* Left Sidebar */}
           <aside className="lg:col-span-3">
             <div className="sticky top-24">
-              <SidebarNav isDashboard />
+              <SidebarNav
+                onCategorySelect={handleCategorySelect}
+              />
             </div>
           </aside>
 

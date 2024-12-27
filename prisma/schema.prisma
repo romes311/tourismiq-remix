@@ -14,51 +14,57 @@ datasource db {
 }
 
 model User {
-  id                String    @id @default(cuid())
-  email             String    @unique
-  name              String
-  avatar            String?
-  organization      String?
-  jobTitle          String?
-  linkedIn          String?
-  location          String?
-  posts             Post[]
-  likes             Like[]
-  comments          Comment[]
-  shares            Share[]
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-
-  // Connections
+  id                  String       @id @default(cuid())
+  email               String       @unique
+  name                String
+  avatar              String?
+  jobTitle           String?
+  organization       String?
+  location           String?
+  linkedIn           String?
+  posts              Post[]
+  comments           Comment[]
+  upvotes            Upvote[]
   sentConnections     Connection[] @relation("SentConnections")
   receivedConnections Connection[] @relation("ReceivedConnections")
-
-  // Notifications
-  notifications       Notification[]
+  notifications      Notification[]
 }
 
 model Post {
-  id           String       @id @default(cuid())
-  content      String
-  imageUrl     String?
-  category     String
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  userId       String
-  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  likes        Like[]
-  comments     Comment[]
-  shares       Share[]
+  id          String    @id @default(cuid())
+  content     String
+  imageUrl    String?
+  category    String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  comments    Comment[]
+  upvotes     Upvote[]
+  upvoteCount Int       @default(0)
 
   @@index([userId])
 }
 
-model Like {
+model Comment {
   id        String   @id @default(cuid())
+  content   String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   postId    String
   userId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([userId])
+}
+
+model Upvote {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
   post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -67,60 +73,30 @@ model Like {
   @@index([postId])
 }
 
-model Comment {
-  id        String   @id @default(cuid())
-  content   String
-  post      Post     @relation(fields: [postId], references: [id])
-  postId    String
-  user      User     @relation(fields: [userId], references: [id])
-  userId    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([postId])
-  @@index([userId])
-}
-
-model Share {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  userId    String
-  postId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-
-  @@index([postId])
-}
-
 model Connection {
-  id          String   @id @default(cuid())
-  status      String   @default("pending") // pending, accepted, rejected
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  status     String   @default("pending") // pending, accepted, rejected
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  senderId   String
+  receiverId String
+  sender     User     @relation("SentConnections", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver   User     @relation("ReceivedConnections", fields: [receiverId], references: [id], onDelete: Cascade)
 
-  // Relations
-  sender      User     @relation("SentConnections", fields: [senderId], references: [id])
-  senderId    String
-  receiver    User     @relation("ReceivedConnections", fields: [receiverId], references: [id])
-  receiverId  String
-
+  @@unique([senderId, receiverId])
   @@index([senderId])
   @@index([receiverId])
 }
 
 model Notification {
-  id          String   @id @default(cuid())
-  type        String
-  message     String
-  read        Boolean  @default(false)
-  metadata    Json?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  user        User     @relation(fields: [userId], references: [id])
-  userId      String
+  id        String   @id @default(cuid())
+  type      String
+  message   String
+  metadata  Json?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }

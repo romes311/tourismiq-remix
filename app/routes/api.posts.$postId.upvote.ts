@@ -13,13 +13,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   try {
-    const { liked } = await request.json();
+    const { upvoted } = await request.json();
 
-    // Start a transaction to ensure like count stays in sync
+    // Start a transaction to ensure upvote count stays in sync
     const result = await prisma.$transaction(async (tx) => {
-      if (liked) {
-        // Check if like already exists
-        const existingLike = await tx.like.findUnique({
+      if (upvoted) {
+        // Check if upvote already exists
+        const existingUpvote = await tx.upvote.findUnique({
           where: {
             postId_userId: {
               postId,
@@ -28,12 +28,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
           },
         });
 
-        if (existingLike) {
-          return null; // Like already exists
+        if (existingUpvote) {
+          return null; // Upvote already exists
         }
 
-        // Add like and increment count
-        await tx.like.create({
+        // Add upvote and increment count
+        await tx.upvote.create({
           data: {
             postId,
             userId: user.id,
@@ -43,48 +43,48 @@ export async function action({ request, params }: ActionFunctionArgs) {
         return await tx.post.update({
           where: { id: postId },
           data: {
-            likeCount: {
+            upvoteCount: {
               increment: 1,
             },
           },
           select: {
-            likeCount: true,
+            upvoteCount: true,
           },
         });
       } else {
-        // Remove like and decrement count
-        const like = await tx.like.deleteMany({
+        // Remove upvote and decrement count
+        const upvote = await tx.upvote.deleteMany({
           where: {
             postId,
             userId: user.id,
           },
         });
 
-        if (like.count === 0) {
-          return null; // Like didn't exist
+        if (upvote.count === 0) {
+          return null; // Upvote didn't exist
         }
 
         return await tx.post.update({
           where: { id: postId },
           data: {
-            likeCount: {
+            upvoteCount: {
               decrement: 1,
             },
           },
           select: {
-            likeCount: true,
+            upvoteCount: true,
           },
         });
       }
     });
 
     if (!result) {
-      return json({ error: "Like operation failed" }, { status: 400 });
+      return json({ error: "Upvote operation failed" }, { status: 400 });
     }
 
-    return json({ success: true, likes: result.likeCount });
+    return json({ success: true, upvotes: result.upvoteCount });
   } catch (error) {
-    console.error("Failed to update like:", error);
-    return json({ error: "Failed to update like" }, { status: 500 });
+    console.error("Failed to update upvote:", error);
+    return json({ error: "Failed to update upvote" }, { status: 500 });
   }
 }

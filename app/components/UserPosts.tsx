@@ -2,7 +2,7 @@ import { useFetcher } from "@remix-run/react";
 import { useEffect } from "react";
 import type { User } from "~/utils/auth.server";
 import { Post } from "./Post";
-import type { PostCategory } from "@prisma/client";
+import type { PostCategory } from "~/types/post";
 
 interface UserPost {
   id: string;
@@ -17,7 +17,7 @@ interface UserPost {
     organization: string | null;
   };
   _count: {
-    likes: number;
+    upvotes: number;
     comments: number;
   };
 }
@@ -86,11 +86,12 @@ export function UserPosts({ user }: UserPostsProps) {
           imageUrl={post.imageUrl}
           timestamp={post.createdAt}
           author={{
+            id: post.user.id,
             name: post.user.name,
             organization: post.user.organization,
             avatar: post.user.avatar,
           }}
-          upvotes={post._count.likes}
+          upvotes={post._count.upvotes}
           comments={post._count.comments}
           shares={0}
           currentUser={user}

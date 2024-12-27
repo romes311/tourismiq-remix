@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { Link } from "@remix-run/react";
 import type { User } from "~/utils/auth.server";
 import { PostCategory } from "~/types/post";
+import { cn } from "~/lib/utils";
 
 interface Comment {
   id: string;
@@ -20,6 +22,7 @@ export interface PostProps {
   imageUrl: string | null;
   timestamp: string | null;
   author: {
+    id: string;
     name: string;
     organization: string | null;
     avatar: string | null;
@@ -28,7 +31,8 @@ export interface PostProps {
   comments: number;
   shares: number;
   currentUser: User | null;
-  isLiked?: boolean;
+  isUpvoted?: boolean;
+  expandComments?: boolean;
 }
 
 function CommentForm({
@@ -80,7 +84,7 @@ function CommentForm({
           <textarea
             name="content"
             rows={2}
-            className="block w-full rounded-md border-0 px-3 py-2 text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-700 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 dark:bg-gray-900 dark:focus:ring-blue-500 sm:text-sm sm:leading-6"
+            className="block w-full rounded-md border-0 px-3 py-2 text-gray-900 bg-white shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
             placeholder="Write a comment..."
             required
           />
@@ -112,32 +116,57 @@ function CommentList({ comments }: { comments: Comment[] }) {
             className="h-8 w-8 rounded-full"
           />
           <div className="flex-1">
-            <div className="bg-gray-50 dark:bg-gray-900 rounded-lg px-4 py-2">
+            <div className="bg-gray-50 rounded-lg px-4 py-2">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="font-medium text-gray-900 dark:text-white">
+                  <span className="font-medium text-gray-900">
                     {comment.user.name}
                   </span>
                   {comment.user.organization && (
-                    <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">
+                    <span className="ml-2 text-sm text-gray-500">
                       {comment.user.organization}
                     </span>
                   )}
                 </div>
-                <span className="text-sm text-gray-500 dark:text-gray-400">
+                <span className="text-sm text-gray-500">
                   {new Date(comment.createdAt).toLocaleDateString("en-US", {
                     month: "short",
                     day: "numeric",
                   })}
                 </span>
               </div>
-              <p className="mt-1 text-gray-900 dark:text-white">
+              <p className="mt-1 text-gray-900">
                 {comment.content}
               </p>
             </div>
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function ImageWithLoading({ src, alt }: { src: string; alt: string }) {
+  const [isLoading, setIsLoading] = useState(true);
+
+  return (
+    <div className="relative w-full aspect-[3/2] rounded-lg overflow-hidden bg-gray-100">
+      {isLoading && (
+        <div className="absolute inset-0">
+          <div className="animate-pulse w-full h-full bg-gray-200">
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
+          </div>
+        </div>
+      )}
+      <img
+        src={src}
+        alt={alt}
+        className={cn(
+          "w-full h-full object-cover transition-opacity duration-300",
+          isLoading ? "opacity-0" : "opacity-100"
+        )}
+        onLoad={() => setIsLoading(false)}
+      />
     </div>
   );
 }
@@ -153,32 +182,76 @@ export function Post({
   comments: commentCount,
   shares,
   currentUser,
-  isLiked = false,
+  isUpvoted = false,
+  expandComments = false,
 }: PostProps) {
-  const [isLikedState, setIsLikedState] = useState(isLiked);
-  const [upvotesCount, setUpvotesCount] = useState(upvotes);
-  const [showComments, setShowComments] = useState(false);
+  const [isUpvotedState, setIsUpvotedState] = useState(isUpvoted);
+  const [upvoteCount, setUpvoteCount] = useState(upvotes);
+  const [showComments, setShowComments] = useState(expandComments);
   const [comments, setComments] = useState<Comment[]>([]);
   const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [localCommentCount, setLocalCommentCount] = useState(commentCount);
 
-  const handleLike = () => {
-    if (!currentUser) return;
-    setIsLikedState(!isLikedState);
-    setUpvotesCount(isLikedState ? upvotesCount - 1 : upvotesCount + 1);
+  // Update local state when props change
+  useEffect(() => {
+    setIsUpvotedState(isUpvoted);
+    setUpvoteCount(upvotes);
+  }, [isUpvoted, upvotes]);
 
-    fetch(`/api/posts/${id}/like`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ liked: !isLikedState }),
-    }).catch((error) => {
-      console.error("Failed to update like status:", error);
-      // Revert state on error
-      setIsLikedState(isLikedState);
-      setUpvotesCount(upvotesCount);
+  // Load comments automatically if expandComments is true
+  useEffect(() => {
+    if (expandComments && comments.length === 0) {
+      handleToggleComments();
+    }
+  }, [expandComments]);
+
+  const handleUpvote = async () => {
+    if (!currentUser || isUpvotedState) return;
+
+    console.log('Upvote attempt:', {
+      postId: id,
+      userId: currentUser.id,
+      currentState: isUpvotedState,
+      currentCount: upvoteCount
     });
+
+    // Optimistically update UI
+    setIsUpvotedState(!isUpvotedState);
+    setUpvoteCount(isUpvotedState ? upvoteCount - 1 : upvoteCount + 1);
+
+    try {
+      const response = await fetch(`/api/posts/${id}/upvote`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ upvoted: !isUpvotedState }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Upvote response:', data);
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      // Update with actual server count
+      setUpvoteCount(data.upvotes);
+    } catch (error) {
+      console.error("Failed to update upvote:", {
+        error,
+        postId: id,
+        userId: currentUser.id,
+        attempted: !isUpvotedState
+      });
+      // Revert state on error
+      setIsUpvotedState(isUpvotedState);
+      setUpvoteCount(upvoteCount);
+    }
   };
 
   const handleToggleComments = async () => {
@@ -209,23 +282,28 @@ export function Post({
   };
 
   return (
-    <article className="bg-white dark:bg-gray-950 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800">
+    <article className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
       {/* Author Info */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-3">
-          <img
-            src={
-              author.avatar ||
-              `https://api.dicebear.com/7.x/avataaars/svg?seed=${author.name}`
-            }
-            alt={author.name}
-            className="h-10 w-10 rounded-full"
-          />
+          <Link to={`/profile/${author.id}`}>
+            <img
+              src={
+                author.avatar ||
+                `https://api.dicebear.com/7.x/avataaars/svg?seed=${author.name}`
+              }
+              alt={author.name}
+              className="h-10 w-10 rounded-full hover:opacity-80 transition-opacity"
+            />
+          </Link>
           <div>
-            <p className="font-medium text-gray-900 dark:text-white">
+            <Link
+              to={`/profile/${author.id}`}
+              className="font-medium text-gray-900 hover:text-blue-600"
+            >
               {author.name}
-            </p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+            </Link>
+            <p className="text-sm text-gray-500">
               {author.organization}
               {timestamp && (
                 <>
@@ -241,7 +319,7 @@ export function Post({
           </div>
         </div>
         <div className="flex items-center">
-          <span className="inline-flex items-center rounded-full bg-blue-50 dark:bg-blue-900/50 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-300 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-700/30">
+          <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
             {category}
           </span>
         </div>
@@ -249,34 +327,28 @@ export function Post({
 
       {/* Content */}
       <div className="space-y-4">
-        <p className="text-gray-900 dark:text-white whitespace-pre-wrap">
+        <p className="text-gray-900 whitespace-pre-wrap">
           {content}
         </p>
-        {imageUrl && (
-          <img
-            src={imageUrl}
-            alt="Post attachment"
-            className="rounded-lg max-h-96 w-full object-cover"
-          />
-        )}
+        {imageUrl && <ImageWithLoading src={imageUrl} alt="Post attachment" />}
       </div>
 
       {/* Actions */}
-      <div className="mt-4 flex items-center justify-between border-t dark:border-gray-800 pt-4">
+      <div className="mt-4 flex items-center justify-between border-t border-gray-200 pt-4">
         <div className="flex items-center space-x-4">
           <button
-            onClick={handleLike}
-            disabled={!currentUser}
+            onClick={handleUpvote}
+            disabled={!currentUser || isUpvotedState}
             className={`flex items-center space-x-1.5 ${
-              isLikedState
-                ? "text-blue-600 dark:text-blue-400"
-                : "text-gray-500 dark:text-gray-400"
+              isUpvotedState
+                ? "text-blue-600"
+                : "text-gray-500"
             } disabled:opacity-50 disabled:cursor-not-allowed`}
-            title={currentUser ? "Like this post" : "Sign in to like"}
+            title={!currentUser ? "Sign in to upvote" : isUpvotedState ? "Already upvoted" : "Upvote this post"}
           >
             <svg
               className="h-5 w-5"
-              fill={isLikedState ? "currentColor" : "none"}
+              fill={isUpvotedState ? "currentColor" : "none"}
               stroke="currentColor"
               viewBox="0 0 24 24"
             >
@@ -284,17 +356,17 @@ export function Post({
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={1.5}
-                d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5"
+                d="M5 15l7-7 7 7"
               />
             </svg>
-            <span>{upvotesCount}</span>
+            <span>{upvoteCount}</span>
           </button>
           <button
             onClick={handleToggleComments}
             className={`flex items-center space-x-1.5 ${
               showComments
-                ? "text-blue-600 dark:text-blue-400"
-                : "text-gray-500 dark:text-gray-400"
+                ? "text-blue-600"
+                : "text-gray-500"
             }`}
           >
             <svg
@@ -312,7 +384,7 @@ export function Post({
             </svg>
             <span>{localCommentCount}</span>
           </button>
-          <button className="flex items-center space-x-1.5 text-gray-500 dark:text-gray-400">
+          <button className="flex items-center space-x-1.5 text-gray-500">
             <svg
               className="h-5 w-5"
               fill="none"
@@ -328,8 +400,33 @@ export function Post({
             </svg>
             <span>{shares}</span>
           </button>
+          <Link
+            to={`/posts/${id}`}
+            className="flex items-center space-x-1.5 text-gray-500 hover:text-blue-600"
+          >
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+              />
+            </svg>
+            <span>View Post</span>
+          </Link>
         </div>
-        <button className="text-gray-500 dark:text-gray-400">
+        <button className="text-gray-500">
           <svg
             className="h-5 w-5"
             fill="none"
@@ -348,7 +445,7 @@ export function Post({
 
       {/* Comments Section */}
       {showComments && (
-        <div className="mt-4 border-t dark:border-gray-800 pt-4">
+        <div className="mt-4 border-t border-gray-200 pt-4">
           {isLoadingComments ? (
             <div className="flex justify-center py-4">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
@@ -362,7 +459,7 @@ export function Post({
               />
               <CommentList comments={comments} />
               {comments.length === 0 && (
-                <p className="text-center text-gray-500 dark:text-gray-400 py-4">
+                <p className="text-center text-gray-500 py-4">
                   No comments yet. Be the first to comment!
                 </p>
               )}

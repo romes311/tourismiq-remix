@@ -1,5 +1,5 @@
 import { json, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/node";
-import { Link, useLoaderData, useFetcher } from "@remix-run/react";
+import { Link, useLoaderData, useFetcher, useNavigate } from "@remix-run/react";
 import { useState, useEffect } from "react";
 import { authenticator } from "~/utils/auth.server";
 import type { User } from "~/utils/auth.server";
@@ -12,6 +12,7 @@ import { UserPosts } from "~/components/UserPosts";
 import { UserComments } from "~/components/UserComments";
 import { ProfileImage } from "~/components/ProfileImage";
 import { Toaster } from "~/components/ui";
+import type { PostCategory } from "~/types/post";
 
 type Tab =
   | "about"
@@ -264,9 +265,21 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<Tab>("about");
   const connectionFetcher = useFetcher<ActionData>();
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const handleUserUpdate = (updatedUser: User) => {
     setUser(updatedUser);
+  };
+
+  const handleCategorySelect = (category: PostCategory | PostCategory[] | null) => {
+    if (category) {
+      const categoryParam = Array.isArray(category)
+        ? category.join(",")
+        : category;
+      navigate(`/?category=${categoryParam}`);
+    } else {
+      navigate("/");
+    }
   };
 
   // Handle fetcher states for toasts
@@ -306,7 +319,9 @@ export default function Dashboard() {
           {/* Left Sidebar */}
           <aside className="lg:col-span-3">
             <div className="sticky top-24">
-              <SidebarNav isDashboard />
+              <SidebarNav
+                onCategorySelect={handleCategorySelect}
+              />
             </div>
           </aside>
 

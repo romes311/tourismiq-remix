@@ -1,14 +1,12 @@
 import { Link } from "@remix-run/react";
 
-interface Connection {
-  id: string;
-  name: string;
-  organization: string | null;
-  avatar: string | null;
-}
-
 interface SidebarConnectionsProps {
-  connections: Connection[];
+  connections: Array<{
+    id: string;
+    name: string;
+    organization: string | null;
+    avatar: string | null;
+  }>;
 }
 
 export function SidebarConnections({ connections }: SidebarConnectionsProps) {

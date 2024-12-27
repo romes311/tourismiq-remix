@@ -1,12 +1,8 @@
-import { Link, useNavigate } from "@remix-run/react";
+import { Link } from "@remix-run/react";
 import { PostCategory } from "~/types/post";
-
-interface NavItem {
-  label: string;
-  value?: PostCategory | PostCategory[];
-  href?: string;
-  disabled?: boolean;
-}
+import { Input } from "~/components/ui/input";
+import { Button } from "~/components/ui/button";
+import { BookmarkIcon } from "lucide-react";
 
 const resourceCategories = [
   PostCategory.BLOG_POST,
@@ -22,133 +18,138 @@ const resourceCategories = [
   PostCategory.WHITEPAPERS,
 ];
 
-const navItems: NavItem[] = [
-  { label: "Thought Leadership", value: PostCategory.THOUGHT_LEADERSHIP },
-  { label: "News", value: PostCategory.NEWS },
-  { label: "People on the Move", href: "/people", disabled: true },
-  { label: "Jobs", href: "/jobs", disabled: true },
-  { label: "Resources", value: resourceCategories },
-  { label: "Events", value: PostCategory.EVENTS },
-  { label: "Vendor Directory", href: "/vendors", disabled: true },
-  { label: "Community Q&A", href: "/community", disabled: true },
-];
-
 interface SidebarNavProps {
-  selectedCategory?: PostCategory | PostCategory[] | null;
-  onCategorySelect?: (category: PostCategory | PostCategory[] | null) => void;
-  isDashboard?: boolean;
+  selectedCategory?: PostCategory | PostCategory[];
+  onCategorySelect: (category: PostCategory | PostCategory[] | null) => void;
 }
 
-export function SidebarNav({
-  selectedCategory,
-  onCategorySelect,
-  isDashboard = false,
-}: SidebarNavProps) {
-  const navigate = useNavigate();
-
+export function SidebarNav({ selectedCategory, onCategorySelect }: SidebarNavProps) {
   const isSelected = (value: PostCategory | PostCategory[]) => {
     if (Array.isArray(value) && Array.isArray(selectedCategory)) {
-      // Check if arrays have the same values (order doesn't matter)
       return (
         value.length === selectedCategory.length &&
         value.every((v) => selectedCategory.includes(v))
       );
     }
     if (!Array.isArray(value) && !Array.isArray(selectedCategory)) {
-      // Compare single categories
       return value === selectedCategory;
     }
     return false;
   };
 
-  const handleCategorySelect = (value: PostCategory | PostCategory[]) => {
-    // If we're on the dashboard, always navigate to home with the category
-    if (isDashboard) {
-      const categoryParam = Array.isArray(value) ? value.join(",") : value;
-      navigate(`/?category=${categoryParam}`);
-      return;
-    }
-
-    // Normal home page behavior
-    if (onCategorySelect) {
-      const isCurrentlySelected = isSelected(value);
-      const newValue = isCurrentlySelected ? null : value;
-      onCategorySelect(newValue);
-
-      // Update URL
-      if (newValue) {
-        const categoryParam = Array.isArray(newValue)
-          ? newValue.join(",")
-          : newValue;
-        navigate(`/?category=${categoryParam}`);
-      } else {
-        navigate("/");
-      }
-    }
-  };
-
   return (
-    <div className="flex flex-col h-full">
-      <nav className="space-y-1">
-        {navItems.map((item) => {
-          const selected =
-            !isDashboard && item.value ? isSelected(item.value) : false;
-
-          if (item.href) {
-            return (
-              <Link
-                key={item.label}
-                to={item.href}
-                className={`${
-                  item.disabled
-                    ? "opacity-50 cursor-not-allowed pointer-events-none"
-                    : "cursor-pointer"
-                } group flex items-center justify-between px-3 py-2 text-sm font-medium rounded-md w-full text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-300`}
-                aria-disabled={item.disabled}
-              >
-                <span className="truncate">{item.label}</span>
-                {item.disabled && (
-                  <span className="text-xs text-gray-400 dark:text-gray-500">
-                    Coming soon
-                  </span>
-                )}
-              </Link>
-            );
-          }
-
-          return (
-            <button
-              key={item.label}
-              onClick={() => item.value && handleCategorySelect(item.value)}
-              className={`${
-                selected
-                  ? "bg-gray-100 dark:bg-gray-800 text-blue-600 dark:text-blue-400"
-                  : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-300"
-              } group flex items-center justify-between px-3 py-2 text-sm font-medium rounded-md w-full`}
-            >
-              <span className="truncate">{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
-
-      {/* Footer */}
-      <div className="mt-auto px-3">
-        <div className="flex flex-wrap gap-3 text-xs text-gray-500 dark:text-gray-400">
-          <Link
-            to="/sponsorships"
-            className="hover:text-gray-700 dark:hover:text-gray-300"
-          >
-            Sponsorships
-          </Link>
-          <Link
-            to="/terms"
-            className="hover:text-gray-700 dark:hover:text-gray-300"
-          >
-            Terms & Use
-          </Link>
+    <nav className="space-y-8">
+      {/* Main Navigation */}
+      <div className="space-y-2">
+        <button
+          onClick={() => onCategorySelect(PostCategory.THOUGHT_LEADERSHIP)}
+          className={`w-full text-left px-2 py-2 text-lg font-medium transition-colors hover:text-blue-600 dark:hover:text-blue-400 ${
+            isSelected(PostCategory.THOUGHT_LEADERSHIP)
+              ? "text-blue-600 dark:text-blue-400"
+              : "text-gray-700 dark:text-gray-300"
+          }`}
+        >
+          Thought Leadership
+        </button>
+        <button
+          onClick={() => onCategorySelect(PostCategory.NEWS)}
+          className={`w-full text-left px-2 py-2 text-lg font-medium transition-colors hover:text-blue-600 dark:hover:text-blue-400 ${
+            isSelected(PostCategory.NEWS)
+              ? "text-blue-600 dark:text-blue-400"
+              : "text-gray-700 dark:text-gray-300"
+          }`}
+        >
+          News
+        </button>
+        <Link
+          to="/people"
+          className="block px-2 py-2 text-lg font-medium text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400"
+        >
+          People on the Move
+        </Link>
+        <div className="px-2 py-2 text-lg font-medium text-gray-400 dark:text-gray-500">
+          Jobs
+        </div>
+        <button
+          onClick={() => onCategorySelect(resourceCategories)}
+          className={`w-full text-left px-2 py-2 text-lg font-medium transition-colors hover:text-blue-600 dark:hover:text-blue-400 ${
+            isSelected(resourceCategories)
+              ? "text-blue-600 dark:text-blue-400"
+              : "text-gray-700 dark:text-gray-300"
+          }`}
+        >
+          Resources
+        </button>
+        <button
+          onClick={() => onCategorySelect(PostCategory.EVENTS)}
+          className={`w-full text-left px-2 py-2 text-lg font-medium transition-colors hover:text-blue-600 dark:hover:text-blue-400 ${
+            isSelected(PostCategory.EVENTS)
+              ? "text-blue-600 dark:text-blue-400"
+              : "text-gray-700 dark:text-gray-300"
+          }`}
+        >
+          Events
+        </button>
+        <div className="px-2 py-2 text-lg font-medium text-gray-400 dark:text-gray-500">
+          Vendor Directory
+        </div>
+        <div className="px-2 py-2 text-lg font-medium text-gray-400 dark:text-gray-500">
+          Community Q&A
+        </div>
+        <div className="px-2 py-2 text-lg font-medium text-gray-400 dark:text-gray-500">
+          Education (Coming Soon)
         </div>
       </div>
-    </div>
+
+      {/* Bookmarks Section */}
+      <div className="pt-6 border-t border-gray-200 dark:border-gray-800">
+        <Link
+          to="/bookmarks"
+          className="flex items-center px-2 py-2 text-lg font-medium text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400"
+        >
+          <BookmarkIcon className="h-5 w-5 mr-2" />
+          Bookmarks
+        </Link>
+      </div>
+
+      {/* Newsletter Section */}
+      <div className="pt-6 border-t border-gray-200 dark:border-gray-800">
+        <div className="space-y-4">
+          <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+            Subscribe to our Newsletter
+          </h3>
+          <form className="space-y-2">
+            <Input
+              type="email"
+              placeholder="Email Address*"
+              className="bg-white dark:bg-gray-800"
+            />
+            <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white">
+              Sign Up
+            </Button>
+          </form>
+        </div>
+      </div>
+
+      {/* Footer Links */}
+      <div className="pt-6 border-t border-gray-200 dark:border-gray-800 text-sm">
+        <div className="flex gap-4 text-gray-600 dark:text-gray-400">
+          <Link to="/sponsorships" className="hover:text-blue-600 dark:hover:text-blue-400">
+            Sponsorships
+          </Link>
+          <span>|</span>
+          <Link to="/terms" className="hover:text-blue-600 dark:hover:text-blue-400">
+            Terms & Use
+          </Link>
+          <span>|</span>
+          <Link to="/privacy" className="hover:text-blue-600 dark:hover:text-blue-400">
+            Privacy Policy
+          </Link>
+        </div>
+        <div className="mt-4 text-gray-500 dark:text-gray-500">
+          © TourismIQ 2024. All rights reserved.
+        </div>
+      </div>
+    </nav>
   );
 }

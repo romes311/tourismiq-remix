@@ -3,7 +3,7 @@ import { prisma } from "~/utils/db.server";
 import { authenticator } from "~/utils/auth.server";
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
-  const user = await authenticator.isAuthenticated(request, {
+  await authenticator.isAuthenticated(request, {
     failureRedirect: "/login",
   });
 
@@ -13,17 +13,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return json({ error: "User ID is required" }, { status: 400 });
   }
 
-  // Ensure user can only access their own comments
-  if (userId !== user.id) {
-    return json({ error: "Unauthorized" }, { status: 403 });
-  }
-
   try {
     const comments = await prisma.comment.findMany({
       where: {
-        post: {
-          userId: userId,
-        },
+        userId: userId,
       },
       orderBy: {
         createdAt: "desc",

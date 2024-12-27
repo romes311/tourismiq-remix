@@ -29,7 +29,7 @@ function PostTrigger({ user, onClick }: PostTriggerProps) {
   return (
     <button
       onClick={onClick}
-      className="w-full bg-white dark:bg-gray-950 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800 p-4 mb-6 text-left hover:bg-gray-50 dark:hover:bg-gray-900"
+      className="w-full bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6 text-left hover:bg-gray-50"
     >
       <div className="flex items-center gap-3">
         <img
@@ -40,7 +40,7 @@ function PostTrigger({ user, onClick }: PostTriggerProps) {
           alt={user.name}
           className="h-10 w-10 rounded-full"
         />
-        <span className="text-gray-500 dark:text-gray-400">
+        <span className="text-gray-500">
           Start a post...
         </span>
       </div>
@@ -264,7 +264,7 @@ function CreatePostModal({
                 <textarea
                   name="content"
                   rows={4}
-                  className="block w-full rounded-lg border-0 px-3 py-2 text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-700 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-inset focus:ring-blue-600 dark:focus:ring-blue-500 dark:bg-gray-900 sm:text-sm sm:leading-6"
+                  className="block w-full rounded-lg border-0 px-3 py-2 text-gray-900 bg-white shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
                   placeholder="What would you like to share?"
                   required
                   aria-label="Post content"
@@ -283,7 +283,7 @@ function CreatePostModal({
                   />
                   {isUploading ? (
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="bg-white/90 dark:bg-gray-900/90 rounded-lg p-4 shadow-lg">
+                      <div className="bg-white/90 rounded-lg p-4 shadow-lg">
                         <div className="flex items-center space-x-3">
                           <svg
                             className="animate-spin h-5 w-5 text-blue-500"
@@ -305,7 +305,7 @@ function CreatePostModal({
                               d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                             />
                           </svg>
-                          <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                          <span className="text-sm font-medium text-gray-900">
                             Preparing image...
                           </span>
                         </div>
