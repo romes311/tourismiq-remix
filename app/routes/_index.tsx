@@ -1,29 +1,59 @@
-import {
-  json,
-  type LoaderFunctionArgs,
-  type ActionFunctionArgs,
-} from "@remix-run/node";
-import {
-  useLoaderData,
-  useFetcher,
-  useSearchParams,
-  useNavigate,
-} from "@remix-run/react";
+import { json, type LoaderFunctionArgs } from "@remix-run/node";
+import { useLoaderData, useNavigate, useFetcher, useLocation } from "@remix-run/react";
+import { SidebarNav } from "~/components/SidebarNav";
+import { SidebarConnections } from "~/components/SidebarConnections";
+import { Feed } from "~/components/Feed";
+import { CreatePostForm } from "~/components/CreatePostForm";
+import { PostCategory } from "~/types/post";
+import type { User } from "~/utils/auth.server";
 import { prisma } from "~/utils/db.server";
 import { authenticator } from "~/utils/auth.server";
-import { CreatePostForm } from "~/components/CreatePostForm";
-import { Post } from "~/components/Post";
-import { uploadImage } from "~/utils/upload.server";
-import { useState, useEffect } from "react";
-import { SidebarNav } from "~/components/SidebarNav";
-import { PostCategory } from "~/types/post";
-import { SidebarConnections } from "~/components/SidebarConnections";
 
+interface LoaderData {
+  user: User | null;
+  posts: Array<{
+    id: string;
+    content: string;
+    category: PostCategory;
+    imageUrl: string | null;
+    createdAt: string;
+    user: {
+      id: string;
+      name: string;
+      avatar: string | null;
+      organization: string | null;
+    };
+    upvotes: number;
+    comments: number;
+    isUpvoted: boolean;
+  }>;
+  connections: Array<{
+    id: string;
+    name: string;
+    avatar: string | null;
+    organization: string | null;
+  }>;
+}
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const user = await authenticator.isAuthenticated(request);
+  const sessionUser = await authenticator.isAuthenticated(request);
   const url = new URL(request.url);
   const categoryParam = url.searchParams.get("category");
+
+  // Get fresh user data from the database
+  const user = sessionUser ? await prisma.user.findUnique({
+    where: { id: sessionUser.id },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      avatar: true,
+      organization: true,
+      jobTitle: true,
+      linkedIn: true,
+      location: true,
+    },
+  }) : null;
 
   // Parse category parameter
   const categories = categoryParam
@@ -53,39 +83,35 @@ export async function loader({ request }: LoaderFunctionArgs) {
       },
       _count: {
         select: {
-          upvotes: true
+          upvotes: true,
+          comments: true
         }
       }
     }
   });
 
-  // Get comment counts and upvote status in parallel
-  const postsWithCounts = await Promise.all(
+  // Get upvote status if user is logged in
+  const postsWithUpvotes = await Promise.all(
     posts.map(async (post) => {
-      const [commentCount, hasUpvoted] = await Promise.all([
-        prisma.comment.count({
-          where: { postId: post.id }
-        }),
-        user ? prisma.upvote.findUnique({
-          where: {
-            postId_userId: {
-              postId: post.id,
-              userId: user.id
-            }
+      const isUpvoted = user ? await prisma.upvote.findUnique({
+        where: {
+          postId_userId: {
+            postId: post.id,
+            userId: user.id
           }
-        }) : Promise.resolve(null)
-      ]);
+        }
+      }) : null;
 
       return {
         id: post.id,
         content: post.content,
         category: post.category,
         imageUrl: post.imageUrl,
-        createdAt: post.createdAt,
+        createdAt: post.createdAt.toISOString(),
         user: post.user,
-        upvoteCount: post._count.upvotes,
-        comments: commentCount,
-        isUpvoted: !!hasUpvoted
+        upvotes: post._count.upvotes,
+        comments: post._count.comments,
+        isUpvoted: !!isUpvoted
       };
     })
   );
@@ -120,149 +146,25 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
   }) : [];
 
-  return json({
-    user,
-    posts: postsWithCounts.map(post => ({
-      id: post.id,
-      content: post.content,
-      category: post.category as PostCategory,
-      imageUrl: post.imageUrl,
-      createdAt: post.createdAt.toISOString(),
-      user: post.user,
-      upvotes: post.upvoteCount,
-      comments: post.comments,
-      shares: 0,
-      isUpvoted: post.isUpvoted
-    })),
-    connections
-  });
-}
-
-export async function action({ request }: ActionFunctionArgs) {
-  const user = await authenticator.isAuthenticated(request, {
-    failureRedirect: "/login",
-  });
-
-  if (!user || !user.id) {
-    return json({ error: "User not authenticated" }, { status: 401 });
-  }
-
-  try {
-    const formData = await request.formData();
-    const content = formData.get("content");
-    const categoryValue = formData.get("category");
-    const imageFile = formData.get("image");
-
-    if (!content || typeof content !== "string") {
-      return json({ error: "Content is required" }, { status: 400 });
-    }
-
-    if (!categoryValue || typeof categoryValue !== "string") {
-      return json({ error: "Valid category is required" }, { status: 400 });
-    }
-
-    let imageUrl: string | null = null;
-    if (imageFile && imageFile instanceof Blob && imageFile.size > 0) {
-      try {
-        imageUrl = await uploadImage(imageFile);
-      } catch (error) {
-        console.error("Failed to save image:", error);
-        return json({ error: "Failed to upload image" }, { status: 400 });
-      }
-    }
-
-    // Create the post with user association
-    const post = await prisma.post.create({
-      data: {
-        content,
-        category: categoryValue as PostCategory,
-        imageUrl,
-        userId: user.id,
-      },
-      include: {
-        user: true,
-        _count: {
-          select: {
-            comments: true,
-            upvotes: true,
-          },
-        },
-      },
-    });
-
-    return json({
-      success: true,
-      post: {
-        id: post.id,
-        content: post.content,
-        category: post.category as PostCategory,
-        imageUrl: post.imageUrl,
-        createdAt: post.createdAt.toISOString(),
-        user: {
-          id: post.user.id,
-          name: post.user.name,
-          avatar: post.user.avatar,
-          organization: post.user.organization,
-        },
-        upvotes: post._count.upvotes,
-        comments: post._count.comments,
-        shares: 0,
-        isUpvoted: false,
-      },
-    });
-  } catch (error) {
-    console.error("Failed to create post:", error);
-    return json({ error: "Failed to create post" }, { status: 400 });
-  }
-}
-
-function getFeedTitle(category: PostCategory | PostCategory[] | undefined): string {
-  if (!category) return "The Latest";
-
-  if (Array.isArray(category)) {
-    return "Resources";
-  }
-
-  switch (category) {
-    case PostCategory.THOUGHT_LEADERSHIP:
-      return "Thought Leadership";
-    case PostCategory.NEWS:
-      return "News";
-    case PostCategory.EVENTS:
-      return "Events";
-    default:
-      return category.split("_").map(word =>
-        word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-      ).join(" ");
-  }
+  return json({ user, posts: postsWithUpvotes, connections });
 }
 
 export default function Index() {
-  const { user, posts, connections } = useLoaderData<typeof loader>();
-  const [searchParams] = useSearchParams();
-  const [selectedCategory, setSelectedCategory] = useState<PostCategory | PostCategory[] | undefined>(undefined);
-  const fetcher = useFetcher();
+  const { user, posts, connections } = useLoaderData<LoaderData>();
   const navigate = useNavigate();
+  const fetcher = useFetcher();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const categoryParam = searchParams.get("category");
 
-  // Handle category from URL parameters
-  useEffect(() => {
-    const categoryParam = searchParams.get("category");
-    if (categoryParam) {
-      if (categoryParam.includes(",")) {
-        // Handle multiple categories (Resources)
-        const categories = categoryParam.split(",") as PostCategory[];
-        setSelectedCategory(categories);
-      } else {
-        // Handle single category
-        setSelectedCategory(categoryParam as PostCategory);
-      }
-    } else {
-      setSelectedCategory(undefined);
-    }
-  }, [searchParams]);
+  // Parse category parameter
+  const selectedCategory = categoryParam
+    ? categoryParam.includes(",")
+      ? categoryParam.split(",") as PostCategory[]
+      : categoryParam as PostCategory
+    : null;
 
   const handleCategorySelect = (category: PostCategory | PostCategory[] | null) => {
-    setSelectedCategory(category || undefined);
     if (category) {
       const categoryParam = Array.isArray(category)
         ? category.join(",")
@@ -273,61 +175,51 @@ export default function Index() {
     }
   };
 
+  // Transform posts data to match Feed component props
+  const feedPosts = posts.map(post => ({
+    id: post.id,
+    content: post.content,
+    category: post.category,
+    imageUrl: post.imageUrl,
+    timestamp: post.createdAt,
+    author: {
+      id: post.user.id,
+      name: post.user.name,
+      organization: post.user.organization,
+      avatar: post.user.avatar,
+    },
+    upvotes: post.upvotes,
+    comments: post.comments,
+    shares: 0, // Add default value if not in data
+    isUpvoted: post.isUpvoted,
+  }));
+
   return (
-    <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-8 mt-16">
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
-        {/* Left Sidebar */}
-        <aside className="lg:col-span-3">
-          <div className="sticky top-24 w-full max-w-[260px]">
-            <SidebarNav
-              selectedCategory={selectedCategory}
-              onCategorySelect={handleCategorySelect}
-            />
-          </div>
-        </aside>
-
-        {/* Main Content */}
-        <main className="lg:col-span-6">
-          {user && <CreatePostForm user={user} fetcher={fetcher} />}
-          <h1 className="text-2xl font-semibold text-gray-900 dark:text-white mb-6 mt-8">
-            {getFeedTitle(selectedCategory)}
-          </h1>
-          <div className="space-y-6">
-            {posts.map((post) => (
-              <Post
-                key={post.id}
-                id={post.id}
-                content={post.content}
-                category={post.category}
-                imageUrl={post.imageUrl}
-                timestamp={post.createdAt}
-                author={{
-                  id: post.user.id,
-                  name: post.user.name,
-                  organization: post.user.organization,
-                  avatar: post.user.avatar,
-                }}
-                upvotes={post.upvotes}
-                comments={post.comments}
-                shares={post.shares}
-                currentUser={user}
-                isUpvoted={post.isUpvoted}
+    <div className="min-h-screen bg-gray-50">
+      <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-8 mt-16">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+          <aside className="lg:col-span-3">
+            <div className="sticky top-24">
+              <SidebarNav
+                selectedCategory={selectedCategory}
+                onCategorySelect={handleCategorySelect}
               />
-            ))}
-            {posts.length === 0 && (
-              <div className="text-center py-8">
-                <p className="text-gray-500 dark:text-gray-400">
-                  No posts found in this category
-                </p>
-              </div>
-            )}
-          </div>
-        </main>
-
-        {/* Right Sidebar */}
-        <aside className="lg:col-span-3">
-          <SidebarConnections connections={connections} />
-        </aside>
+            </div>
+          </aside>
+          <main className="lg:col-span-6 space-y-6">
+            {user && <CreatePostForm user={user} fetcher={fetcher} />}
+            <Feed
+              posts={feedPosts}
+              currentUser={user}
+              selectedCategory={selectedCategory}
+            />
+          </main>
+          <aside className="lg:col-span-3">
+            <div className="sticky top-24">
+              <SidebarConnections connections={connections} />
+            </div>
+          </aside>
+        </div>
       </div>
     </div>
   );

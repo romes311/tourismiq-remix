@@ -33,12 +33,10 @@ function PostTrigger({ user, onClick }: PostTriggerProps) {
     >
       <div className="flex items-center gap-3">
         <img
-          src={
-            user.avatar ||
-            `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name}`
-          }
+          src={user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name}`}
           alt={user.name}
           className="h-10 w-10 rounded-full"
+          crossOrigin="anonymous"
         />
         <span className="text-gray-500">
           Start a post...

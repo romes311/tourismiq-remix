@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link } from "@remix-run/react";
 import type { User } from "~/utils/auth.server";
 import { PostCategory } from "~/types/post";
@@ -79,6 +79,8 @@ function CommentForm({
           }
           alt={currentUser.name}
           className="h-8 w-8 rounded-full"
+          crossOrigin="anonymous"
+          referrerPolicy="no-referrer"
         />
         <div className="flex-1">
           <textarea
@@ -114,6 +116,8 @@ function CommentList({ comments }: { comments: Comment[] }) {
             }
             alt={comment.user.name}
             className="h-8 w-8 rounded-full"
+            crossOrigin="anonymous"
+            referrerPolicy="no-referrer"
           />
           <div className="flex-1">
             <div className="bg-gray-50 rounded-lg px-4 py-2">
@@ -147,25 +151,50 @@ function CommentList({ comments }: { comments: Comment[] }) {
 }
 
 function ImageWithLoading({ src, alt }: { src: string; alt: string }) {
-  const [isLoading, setIsLoading] = useState(true);
+  const [isImageVisible, setIsImageVisible] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
+
+  // Load image immediately
+  useEffect(() => {
+    const img = new Image();
+    img.src = src;
+    img.onload = () => {
+      setIsImageVisible(true);
+      setIsFirstLoad(false);
+    };
+    img.onerror = () => {
+      setHasError(true);
+      setIsFirstLoad(false);
+    };
+  }, [src]);
 
   return (
     <div className="relative w-full aspect-[3/2] rounded-lg overflow-hidden bg-gray-100">
-      {isLoading && (
+      {/* Loading shimmer - only show during first load */}
+      {isFirstLoad && (
         <div className="absolute inset-0">
           <div className="animate-pulse w-full h-full bg-gray-200">
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
           </div>
         </div>
       )}
+
+      {/* Error state */}
+      {hasError && !isFirstLoad && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+          <div className="text-gray-400 text-sm">Failed to load image</div>
+        </div>
+      )}
+
+      {/* Image with blur transition */}
       <img
         src={src}
         alt={alt}
         className={cn(
-          "w-full h-full object-cover transition-opacity duration-300",
-          isLoading ? "opacity-0" : "opacity-100"
+          "w-full h-full object-cover transition-all duration-700",
+          isImageVisible ? "opacity-100 blur-0 scale-100" : "opacity-0 blur-md scale-105"
         )}
-        onLoad={() => setIsLoading(false)}
       />
     </div>
   );
@@ -198,12 +227,34 @@ export function Post({
     setUpvoteCount(upvotes);
   }, [isUpvoted, upvotes]);
 
+  const handleToggleComments = useCallback(async () => {
+    setShowComments(!showComments);
+
+    // Only fetch comments if they haven't been loaded yet
+    if (!showComments && comments.length === 0 && !isLoadingComments) {
+      setIsLoadingComments(true);
+      try {
+        const response = await fetch(`/api/posts/${id}/comments`);
+        if (response.ok) {
+          const data = await response.json();
+          setComments(data.comments);
+          // Update local comment count to match server
+          setLocalCommentCount(data.comments.length);
+        }
+      } catch (error) {
+        console.error("Failed to fetch comments:", error);
+      } finally {
+        setIsLoadingComments(false);
+      }
+    }
+  }, [showComments, comments.length, isLoadingComments, id]);
+
   // Load comments automatically if expandComments is true
   useEffect(() => {
     if (expandComments && comments.length === 0) {
       handleToggleComments();
     }
-  }, [expandComments]);
+  }, [expandComments, comments.length, handleToggleComments]);
 
   const handleUpvote = async () => {
     if (!currentUser || isUpvotedState) return;
@@ -254,28 +305,6 @@ export function Post({
     }
   };
 
-  const handleToggleComments = async () => {
-    setShowComments(!showComments);
-
-    // Only fetch comments if they haven't been loaded yet
-    if (!showComments && comments.length === 0 && !isLoadingComments) {
-      setIsLoadingComments(true);
-      try {
-        const response = await fetch(`/api/posts/${id}/comments`);
-        if (response.ok) {
-          const data = await response.json();
-          setComments(data.comments);
-          // Update local comment count to match server
-          setLocalCommentCount(data.comments.length);
-        }
-      } catch (error) {
-        console.error("Failed to fetch comments:", error);
-      } finally {
-        setIsLoadingComments(false);
-      }
-    }
-  };
-
   const handleCommentAdded = (newComment: Comment) => {
     setComments((prevComments) => [newComment, ...prevComments]);
     setLocalCommentCount((prev) => prev + 1);
@@ -294,6 +323,8 @@ export function Post({
               }
               alt={author.name}
               className="h-10 w-10 rounded-full hover:opacity-80 transition-opacity"
+              crossOrigin="anonymous"
+              referrerPolicy="no-referrer"
             />
           </Link>
           <div>

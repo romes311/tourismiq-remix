@@ -57,6 +57,8 @@ export function Header({ user }: HeaderProps) {
                       }
                       alt={user.name}
                       className="h-8 w-8 rounded-full"
+                      crossOrigin="anonymous"
+                      referrerPolicy="no-referrer"
                     />
                   </button>
 

@@ -25,6 +25,8 @@ export default defineConfig(({ mode }) => {
       {
         name: "socket-io",
         configureServer(server) {
+          if (!server.httpServer) return;
+
           const io = new Server(server.httpServer, {
             cors: {
               origin: "*",
@@ -32,21 +34,30 @@ export default defineConfig(({ mode }) => {
               credentials: true,
             },
             path: "/ws",
+            transports: ["websocket"],
           });
 
           io.on("connection", (socket) => {
-            console.log("Client connected:", socket.id);
-
-            const userId = socket.handshake.auth.userId;
-            if (userId) {
-              socket.join(`user:${userId}`);
-              console.log(`User ${userId} joined their room`);
+            if (process.env.NODE_ENV === "development") {
+              console.log("Client connected:", socket.id);
             }
 
+            socket.on("join", (userId) => {
+              if (userId) {
+                socket.join(`user:${userId}`);
+                if (process.env.NODE_ENV === "development") {
+                  console.log(`User ${userId} joined their room`);
+                }
+              }
+            });
+
             socket.on("disconnect", () => {
+              const userId = socket.handshake.auth.userId;
               if (userId) {
                 socket.leave(`user:${userId}`);
-                console.log(`User ${userId} left their room`);
+                if (process.env.NODE_ENV === "development") {
+                  console.log(`User ${userId} left their room`);
+                }
               }
             });
           });

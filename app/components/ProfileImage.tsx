@@ -3,6 +3,7 @@ import { useFetcher } from "@remix-run/react";
 import Cropper from "react-cropper";
 import "cropperjs/dist/cropper.css";
 import type { User } from "~/utils/auth.server";
+import { cn } from "~/lib/utils";
 
 interface ProfileImageProps {
   src: string;
@@ -85,7 +86,16 @@ export function ProfileImage({
   return (
     <>
       <div className="relative">
-        <img src={src} alt={alt} className={className} />
+        <img
+          src={src}
+          alt={alt}
+          className={cn(
+            "object-cover",
+            className
+          )}
+          crossOrigin="anonymous"
+          referrerPolicy="no-referrer"
+        />
         {isEditing && (
           <button
             onClick={() => fileInputRef.current?.click()}

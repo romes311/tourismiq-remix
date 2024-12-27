@@ -19,7 +19,7 @@ const resourceCategories = [
 ];
 
 interface SidebarNavProps {
-  selectedCategory?: PostCategory | PostCategory[];
+  selectedCategory?: PostCategory | PostCategory[] | null;
   onCategorySelect: (category: PostCategory | PostCategory[] | null) => void;
 }
 
