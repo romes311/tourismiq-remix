@@ -17,17 +17,42 @@ interface RawPost {
 }
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
-  // Ensure user is authenticated
-  await authenticator.isAuthenticated(request, {
-    failureRedirect: "/login",
+  const requestId = Math.random().toString(36).substring(7);
+  console.log(`[API:Posts:${requestId}] Request received:`, {
+    url: request.url,
+    method: request.method,
+    userId: params.userId,
+    headers: Object.fromEntries(request.headers)
   });
 
-  const userId = params.userId;
-  if (!userId) {
-    return json({ error: "User ID is required" }, { status: 400 });
-  }
-
   try {
+    // Ensure user is authenticated
+    console.log(`[API:Posts:${requestId}] Authenticating user...`);
+    const authenticatedUser = await authenticator.isAuthenticated(request, {
+      failureRedirect: "/login",
+    });
+    console.log(`[API:Posts:${requestId}] User authenticated:`, authenticatedUser.id);
+
+    const userId = params.userId;
+    if (!userId) {
+      console.log(`[API:Posts:${requestId}] Missing user ID`);
+      return json({ error: "User ID is required" }, { status: 400 });
+    }
+
+    // Check if user exists
+    console.log(`[API:Posts:${requestId}] Checking if user exists:`, userId);
+    const userExists = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+
+    if (!userExists) {
+      console.log(`[API:Posts:${requestId}] User not found:`, userId);
+      return json({ error: "User not found" }, { status: 404 });
+    }
+
+    console.log(`[API:Posts:${requestId}] Fetching posts for user:`, userId);
+    const startTime = Date.now();
     const posts = await prisma.$queryRaw<RawPost[]>`
       SELECT
         p.id,
@@ -49,6 +74,13 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       GROUP BY p.id, u.id
       ORDER BY p."createdAt" DESC
     `;
+    const queryTime = Date.now() - startTime;
+
+    console.log(`[API:Posts:${requestId}] Query completed:`, {
+      duration: queryTime + 'ms',
+      count: posts.length,
+      postIds: posts.map(p => p.id)
+    });
 
     // Transform the raw query results to match the expected format
     const transformedPosts = posts.map(post => ({
@@ -69,9 +101,25 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       },
     }));
 
+    console.log(`[API:Posts:${requestId}] Response ready:`, {
+      postCount: transformedPosts.length,
+      totalDuration: Date.now() - startTime + 'ms'
+    });
+
     return json({ posts: transformedPosts });
   } catch (error) {
-    console.error("Failed to fetch user posts:", error);
-    return json({ error: "Failed to fetch posts" }, { status: 500 });
+    console.error(`[API:Posts:${requestId}] Error:`, {
+      error,
+      userId: params.userId,
+      stack: error instanceof Error ? error.stack : undefined,
+      message: error instanceof Error ? error.message : String(error),
+      context: "Detailed error context for debugging",
+      url: request.url,
+      headers: Object.fromEntries(request.headers)
+    });
+    return json({
+      error: "An error occurred while fetching posts. Please try again.",
+      details: error instanceof Error ? error.message : String(error)
+    }, { status: 500 });
   }
 }

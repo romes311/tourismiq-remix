@@ -9,6 +9,8 @@ import { ProfileImage } from "~/components/ProfileImage";
 import { SidebarNav } from "~/components/SidebarNav";
 import { useState } from "react";
 import type { PostCategory } from "~/types/post";
+import { useToast } from "~/hooks/use-toast";
+import { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from "~/components/ui/dialog";
 
 type Tab = "about" | "posts" | "comments" | "connections";
 
@@ -31,11 +33,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         location: true,
         receivedConnections: {
           where: { senderId: currentUser.id },
-          select: { status: true },
+          select: { id: true, status: true },
         },
         sentConnections: {
           where: { receiverId: currentUser.id },
-          select: { status: true },
+          select: { id: true, status: true },
         },
       },
     }),
@@ -78,12 +80,14 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const receivedConnection = user.receivedConnections[0];
   const sentConnection = user.sentConnections[0];
   const connectionStatus = receivedConnection?.status || sentConnection?.status || null;
+  const connectionId = receivedConnection?.id || sentConnection?.id || null;
 
   return json({
     currentUser,
     user: {
       ...user,
       connectionStatus,
+      connectionId,
     },
     connections,
   });
@@ -93,6 +97,9 @@ export default function UserProfile() {
   const { currentUser, user, connections } = useLoaderData<typeof loader>();
   const [activeTab, setActiveTab] = useState<Tab>("about");
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const [isMessageDialogOpen, setIsMessageDialogOpen] = useState(false);
+  const [newMessage, setNewMessage] = useState("");
 
   const handleCategorySelect = (category: PostCategory | PostCategory[] | null) => {
     if (category) {
@@ -102,6 +109,46 @@ export default function UserProfile() {
       navigate(`/?category=${categoryParam}`);
     } else {
       navigate("/");
+    }
+  };
+
+  const handleStartConversation = async () => {
+    if (!newMessage.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Please enter a message",
+      });
+      return;
+    }
+
+    try {
+      // Create conversation
+      const response = await fetch("/api/conversations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          participantId: user.id,
+          message: newMessage.trim(),
+        }),
+      });
+
+      if (!response.ok) throw new Error("Failed to create conversation");
+
+      const { conversation } = await response.json();
+
+      setIsMessageDialogOpen(false);
+      setNewMessage("");
+      navigate(`/dashboard?tab=messages&conversation=${conversation.id}`);
+    } catch (error) {
+      console.error("Failed to start conversation:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to start conversation. Please try again.",
+      });
     }
   };
 
@@ -129,27 +176,75 @@ export default function UserProfile() {
           <main className="lg:col-span-9 space-y-4">
             {/* Profile Header */}
             <div className="bg-white dark:bg-gray-950 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800 p-4">
-              <div className="flex items-center gap-6">
-                <div className="relative">
-                  <ProfileImage
-                    src={
-                      user.avatar ||
-                      `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name}`
-                    }
-                    alt={user.name}
-                    className="h-20 w-20 rounded-full ring-4 ring-blue-100 dark:ring-blue-900"
-                  />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-6">
+                  <div className="relative">
+                    <ProfileImage
+                      src={
+                        user.avatar ||
+                        `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name}`
+                      }
+                      alt={user.name}
+                      className="h-20 w-20 rounded-full ring-4 ring-blue-100 dark:ring-blue-900"
+                    />
+                  </div>
+                  <div>
+                    <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
+                      {user.name}
+                    </h1>
+                    {user.organization && (
+                      <p className="text-gray-600 dark:text-gray-400">
+                        {user.organization}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
-                    {user.name}
-                  </h1>
-                  {user.organization && (
-                    <p className="text-gray-600 dark:text-gray-400">
-                      {user.organization}
-                    </p>
-                  )}
-                </div>
+                {currentUser.id !== user.id && user.connectionStatus === "accepted" && (
+                  <>
+                    <button
+                      onClick={() => setIsMessageDialogOpen(true)}
+                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    >
+                      Message
+                    </button>
+
+                    <Dialog open={isMessageDialogOpen} onOpenChange={setIsMessageDialogOpen}>
+                      <DialogContent className="sm:max-w-[425px]">
+                        <DialogHeader>
+                          <DialogTitle>Send Message to {user.name}</DialogTitle>
+                          <DialogDescription>
+                            Start a conversation by sending a message.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                          <div className="grid gap-2">
+                            <textarea
+                              id="message"
+                              value={newMessage}
+                              onChange={(e) => setNewMessage(e.target.value)}
+                              className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                              placeholder="Type your message here..."
+                            />
+                          </div>
+                        </div>
+                        <DialogFooter>
+                          <button
+                            onClick={() => setIsMessageDialogOpen(false)}
+                            className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleStartConversation}
+                            className="ml-3 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                          >
+                            Send Message
+                          </button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </>
+                )}
               </div>
             </div>
 

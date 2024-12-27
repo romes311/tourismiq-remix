@@ -84,11 +84,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
       where: {
         ...categoryFilter,
         ...cursorFilter,
-        user: {
-          name: {
-            not: null
-          }
-        }
       },
       orderBy: {
         createdAt: "desc",
@@ -114,24 +109,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
           },
         },
       },
-    }) as unknown as Array<{
-      id: string;
-      content: string;
-      category: string;
-      imageUrl: string | null;
-      createdAt: Date;
-      upvoteCount: number;
-      user: {
-        id: string;
-        name: string;
-        avatar: string | null;
-        organization: string | null;
-      };
-      upvotes: Array<{ id: string }>;
-      _count: {
-        comments: number;
-      };
-    }>,
+    }),
     user
       ? prisma.user.findMany({
           where: {
@@ -153,9 +131,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
                 },
               },
             ],
-            name: {
-              not: null
-            }
           },
           select: {
             id: true,
@@ -163,12 +138,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
             avatar: true,
             organization: true,
           },
-        }) as Promise<Array<{
-          id: string;
-          name: string;
-          avatar: string | null;
-          organization: string | null;
-        }>>
+        })
       : Promise.resolve([]),
   ]);
 

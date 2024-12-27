@@ -1,10 +1,10 @@
 import { useFetcher } from "@remix-run/react";
-import { useEffect } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import type { User } from "~/utils/auth.server";
 import { Post } from "./Post";
-import type { PostCategory } from "~/types/post";
+import { PostCategory } from "~/types/post";
 
-interface UserPost {
+interface PostData {
   id: string;
   content: string;
   category: PostCategory;
@@ -24,40 +24,92 @@ interface UserPost {
 
 interface UserPostsProps {
   user: User;
+  isVisible?: boolean;
 }
 
-export function UserPosts({ user }: UserPostsProps) {
-  const fetcher = useFetcher<{ posts: UserPost[] }>();
+export function UserPosts({ user, isVisible = true }: UserPostsProps) {
+  const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const fetcher = useFetcher<{ posts: PostData[]; error?: string; details?: string }>();
+  const hasInitialFetch = useRef(false);
 
   useEffect(() => {
-    if (fetcher.state === "idle" && !fetcher.data) {
-      fetcher.load(`/api/user/${user.id}/posts`);
+    if (isVisible && !hasInitialFetch.current) {
+      setError(null);
+      try {
+        fetcher.load(`/api/user/${user.id}/posts`);
+      } catch (e) {
+        console.error("[UserPosts] Error initiating fetch:", e);
+        setError("Failed to load posts. Please try again.");
+      }
+      hasInitialFetch.current = true;
     }
-  }, [fetcher, user.id]);
+  }, [user.id, fetcher, isVisible]);
 
-  if (fetcher.state === "loading") {
+  useEffect(() => {
+    if (!isVisible) {
+      hasInitialFetch.current = false;
+      setRetryCount(0);
+    }
+  }, [isVisible]);
+
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data) {
+      if (fetcher.data.error) {
+        const errorMessage = fetcher.data.details || fetcher.data.error;
+        if (errorMessage.includes("User not authenticated") || errorMessage.includes("failureRedirect")) {
+          // Handle authentication errors by redirecting to login
+          window.location.href = "/login";
+          return;
+        }
+        setError(errorMessage);
+      } else {
+        setRetryCount(0);
+      }
+    }
+  }, [fetcher.data, fetcher.state]);
+
+  const handleRetry = useCallback(() => {
+    if (retryCount >= 3) {
+      setError("Maximum retry attempts reached. Please refresh the page.");
+      return;
+    }
+
+    setError(null);
+    setRetryCount((prev) => prev + 1);
+
+    const delay = Math.min(1000 * Math.pow(2, retryCount), 5000);
+
+    setTimeout(() => {
+      try {
+        fetcher.load(`/api/user/${user.id}/posts`);
+      } catch (e) {
+        console.error("[UserPosts] Error initiating retry fetch:", e);
+        setError("Failed to load posts. Please try again.");
+      }
+    }, delay);
+  }, [fetcher, user.id, retryCount]);
+
+  if (fetcher.state === "loading" && !error) {
     return (
-      <div className="space-y-4">
-        <div className="animate-pulse">
-          {[1, 2, 3].map((n) => (
-            <div
-              key={n}
-              className="bg-white dark:bg-gray-950 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800 mb-4"
-            >
-              <div className="flex items-center space-x-3 mb-4">
-                <div className="h-10 w-10 bg-gray-200 dark:bg-gray-800 rounded-full" />
-                <div className="flex-1">
-                  <div className="h-4 w-1/4 bg-gray-200 dark:bg-gray-800 rounded mb-2" />
-                  <div className="h-3 w-1/3 bg-gray-200 dark:bg-gray-800 rounded" />
-                </div>
-              </div>
-              <div className="space-y-3">
-                <div className="h-4 bg-gray-200 dark:bg-gray-800 rounded w-full" />
-                <div className="h-4 bg-gray-200 dark:bg-gray-800 rounded w-5/6" />
-              </div>
-            </div>
-          ))}
-        </div>
+      <div className="flex justify-center py-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-red-500 dark:text-red-400 mb-4">{error}</p>
+        {retryCount < 3 && (
+          <button
+            onClick={handleRetry}
+            className="inline-flex items-center justify-center rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          >
+            Try Again
+          </button>
+        )}
       </div>
     );
   }

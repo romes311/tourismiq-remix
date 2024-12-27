@@ -71,9 +71,37 @@ export async function loader({ request }: LoaderFunctionArgs) {
     },
   });
 
+  // Transform notifications to match the expected type
+  const transformedNotifications = notifications.map((notification) => {
+    const metadata = typeof notification.metadata === 'object' && notification.metadata
+      ? { connectionId: (notification.metadata as { connectionId?: string }).connectionId }
+      : null;
+
+    return {
+      id: notification.id,
+      type: notification.type,
+      message: notification.message,
+      read: notification.read,
+      createdAt: notification.createdAt.toISOString(),
+      metadata,
+    };
+  });
+
+  // Transform connections to match the expected type
+  const transformedConnections = connections.map((connection) => ({
+    id: connection.id,
+    status: connection.status,
+    sender: {
+      id: connection.sender.id,
+      name: connection.sender.name || "",
+      avatar: connection.sender.avatar,
+      organization: connection.sender.organization,
+    },
+  }));
+
   return json<LoaderData>({
-    notifications,
-    connections,
+    notifications: transformedNotifications,
+    connections: transformedConnections,
   });
 }
 
@@ -123,7 +151,7 @@ export async function action({ request }: ActionFunctionArgs) {
         data: {
           id: notification.id,
           message: notification.message,
-          metadata: notification.metadata,
+          metadata: { connectionId: (notification.metadata as { connectionId?: string })?.connectionId },
         },
       });
 
@@ -146,7 +174,7 @@ export default function Notifications() {
   const fetcher = useFetcher();
 
   return (
-    <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-12 mt-[90px]">
+    <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-12 mt-[90px] min-h-[calc(100vh-90px)]">
       <div className="max-w-3xl mx-auto">
         <h1 className="text-3xl font-bold mb-8">Notifications</h1>
 

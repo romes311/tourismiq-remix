@@ -15,6 +15,11 @@ interface LoaderData {
   hasMore: boolean;
 }
 
+function formatCategoryTitle(category: string): string {
+  const formatted = category.toLowerCase().replace(/_/g, ' ');
+  return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+}
+
 export function Feed({ posts: initialPosts, currentUser, selectedCategory, hasMore: initialHasMore }: FeedProps) {
   const fetcher = useFetcher<LoaderData>();
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -65,13 +70,11 @@ export function Feed({ posts: initialPosts, currentUser, selectedCategory, hasMo
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
+      <h2 className="text-2xl font-semibold mb-6 text-gray-900 dark:text-white">
         {selectedCategory ? (
-          Array.isArray(selectedCategory) ? (
-            "Resources"
-          ) : (
-            selectedCategory.charAt(0).toUpperCase() + selectedCategory.slice(1)
-          )
+          Array.isArray(selectedCategory)
+            ? "Resources"
+            : formatCategoryTitle(selectedCategory)
         ) : (
           "All Posts"
         )}

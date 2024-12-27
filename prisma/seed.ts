@@ -68,6 +68,9 @@ const eventsPosts = [
 async function seed() {
   console.log("Cleaning up existing data...");
   await prisma.notification.deleteMany();
+  await prisma.message.deleteMany();
+  await prisma.conversationParticipant.deleteMany();
+  await prisma.conversation.deleteMany();
   await prisma.comment.deleteMany();
   await prisma.connection.deleteMany();
   await prisma.post.deleteMany();

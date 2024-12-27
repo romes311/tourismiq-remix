@@ -3,18 +3,19 @@ import type { Server as HTTPServer } from "http";
 
 let io: Server | null = null;
 
-export type NotificationPayload = {
-  type: "connection_request" | "connection_accepted";
+export interface NotificationPayload {
+  type: "connection_request" | "connection_accepted" | "new_message";
   userId: string;
   data: {
     id: string;
     message: string;
-    metadata?: {
+    metadata: {
       connectionId?: string;
-      [key: string]: unknown;
+      conversationId?: string;
+      messageId?: string;
     };
   };
-};
+}
 
 export function initializeSocketIO(httpServer: HTTPServer) {
   if (io) return io;
